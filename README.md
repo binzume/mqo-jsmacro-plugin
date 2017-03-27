@@ -9,9 +9,11 @@ JavaScriptでメタセコイアのマクロを書けるようにするプラグ�
 
 `Plugins/Station` ディレクトリに `JSMacro.dll` と `JSMacro.dll.core.js` を置いて下さい．
 
+DLLは64bit版です．(32ビット版が必要な場合はソースからビルドして下さい...)
+
 ## API
 
-暫定仕様です．ここの関数の動作はメタセコイアSDKのドキュメントを参照してください．
+暫定仕様です．個々の関数の動作はメタセコイアSDKのドキュメントを参照してください．
 
 - document.objects.length (ReadOnly)
 - document.objects[index].name
@@ -31,15 +33,18 @@ JavaScriptでメタセコイアのマクロを書けるようにするプラグ�
 - document.materials[]
 - document.addObject(obj)
 - document.createObject()
+- document.compact()
 - console.log("message")
 
+注意点
 
 - `verts[index] は [x,y,z]` 形式の値を返します
 - `verts[0] = [x,y,z]` は動作しますが `verts[0][0] = x` は変更が反映されません
 - 頂点の削除は `delete verts[index];`
+- 配列はundefinedの要素が存在する場合(削除操作の後など)があります．連続した配列にしたい場合は `compact()` メソッドを読んでください．
 
 ## TODO
 
 - 面とマテリアルの編集
-- C:/tmp/test.js とかを読みに行くの直す
+- UIまともに． スクリプトとショートカットキーなどの登録できるようにする
 

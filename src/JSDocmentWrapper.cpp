@@ -56,6 +56,7 @@ static void SetVertex(uint32_t index, Local<Value> value, const PropertyCallback
 	p.z = (float)coord->Get(2).As<Number>()->Value();
 
 	obj->SetVertex(index, p);
+	info.GetReturnValue().Set(value);
 }
 
 static void AddVertex(const FunctionCallbackInfo<Value>& args) {
@@ -111,11 +112,15 @@ static void GetFace(uint32_t index, const PropertyCallbackInfo<Value>& info)
 	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
 
+	const int count = obj->GetFacePointCount(index);
+	if (count == 0) {
+		info.GetReturnValue().SetUndefined();
+		return;
+	}
+
 	auto face = Object::New(isolate);
 	face->Set(UTF8("_obj"), _obj);
 	face->Set(UTF8("index"), Integer::New(isolate, index));
-
-	const int count = obj->GetFacePointCount(index);
 	int *points = new int[count];
 	obj->GetFacePointArray(index, points);
 
@@ -159,6 +164,8 @@ static void DeleteFace(uint32_t index, const PropertyCallbackInfo<Boolean>& info
 
 	obj->DeleteFace(index);
 }
+#include <codecvt>
+
 
 static void GetObjectName(const Local<String> property, const PropertyCallbackInfo<Value>& info)
 {
@@ -166,7 +173,14 @@ static void GetObjectName(const Local<String> property, const PropertyCallbackIn
 	Local<Object> self = info.Holder();
 	MQObject obj = static_cast<MQObject>(self->GetInternalField(0).As<External>()->Value());
 
-	info.GetReturnValue().Set(UTF8(obj->GetName().c_str()));
+	std::locale sjis(".932", std::locale::ctype);
+	typedef std::codecvt<wchar_t, char, std::mbstate_t> mbCvt;
+	const mbCvt& cvt = std::use_facet<mbCvt>(sjis);
+	std::wstring_convert<mbCvt, wchar_t> sjisConverter(&cvt);
+	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> utf8Converter;
+
+	std::string name = utf8Converter.to_bytes(sjisConverter.from_bytes(obj->GetName()));
+	info.GetReturnValue().Set(UTF8(name.c_str()));
 }
 
 static void SetObjectName(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info)
@@ -175,7 +189,16 @@ static void SetObjectName(const Local<String> property, Local<Value> value, cons
 	Local<Object> self = info.Holder();
 	MQObject obj = static_cast<MQObject>(self->GetInternalField(0).As<External>()->Value());
 	String::Utf8Value str(value);
-	obj->SetName(*str);
+
+	std::locale sjis(".932", std::locale::ctype);
+	typedef std::codecvt<wchar_t, char, std::mbstate_t> mbCvt;
+	const mbCvt& cvt = std::use_facet<mbCvt>(sjis);
+	std::wstring_convert<mbCvt, wchar_t> sjisConverter(&cvt);
+	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> utf8Converter;
+
+	std::string name = sjisConverter.to_bytes(utf8Converter.from_bytes(*str));
+
+	obj->SetName(name.c_str());
 }
 
 
@@ -226,6 +249,7 @@ static void GetFaces(const Local<Name> property, const PropertyCallbackInfo<Valu
 	facest->Set(UTF8("append"), FunctionTemplate::New(isolate, AddFace));
 	Local<Object> faces = facest->NewInstance();
 	faces->Set(UTF8("_obj"), self);
+	faces->SetPrototype(Array::New(isolate));
 	info.GetReturnValue().Set(faces);
 }
 
@@ -321,8 +345,17 @@ static void AddObject(const FunctionCallbackInfo<Value>& args)
 	MQObject obj = static_cast<MQObject>(wrap->Value());
 
 	doc->AddObject(obj);
+	args.GetReturnValue().SetUndefined();
 }
 
+static void CompactDocument(const FunctionCallbackInfo<Value>& args)
+{
+	Isolate* isolate = args.GetIsolate();
+	MQDocument doc = static_cast<MQDocument>(args.Data().As<External>()->Value());
+
+	doc->Compact();
+	args.GetReturnValue().SetUndefined();
+}
 
 static Handle<Array> MQObjectsAsArray(Isolate* isolate, MQDocument doc) {
 	Handle<Array> array = Array::New(isolate, doc->GetObjectCount());
@@ -358,6 +391,7 @@ static void GetMaterials(const Local<Name> property, const PropertyCallbackInfo<
 Local<Object> NewDocumentObject(Isolate* isolate, MQDocument doc) {
 	auto obj = ObjectTemplate::New(isolate);
 	obj->SetInternalFieldCount(1);
+	obj->Set(UTF8("compact"), FunctionTemplate::New(isolate, CompactDocument));
 	obj->Set(UTF8("addObject"), FunctionTemplate::New(isolate, AddObject, External::New(isolate, doc)));
 	obj->Set(UTF8("createObject"), FunctionTemplate::New(isolate, CreateObject));
 	obj->SetLazyDataProperty(UTF8("objects"), GetObjects);
