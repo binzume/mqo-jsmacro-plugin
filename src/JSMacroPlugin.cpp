@@ -40,7 +40,9 @@ class JSMacroPlugin : public MQStationPlugin
 public:
 	JSMacroPlugin();
 	JSMacroWindow *window;
-	v8::Platform* v8platform;
+	v8::Platform* platform;
+	v8::Isolate* isolate;
+	v8::Isolate::CreateParams create_params;
 
 	virtual void GetPlugInID(DWORD *Product, DWORD *ID);
 	virtual const char *GetPlugInName(void);
@@ -55,12 +57,13 @@ public:
 		if (window) window->AddMessage(message);
 	}
 	void ExecScript(MQDocument doc, const std::string &jsfile);
+	void ExecScriptString(MQDocument doc, const std::string &code) {};
 protected:
 	virtual bool ExecuteCallback(MQDocument doc, void *option);
 };
 
 
-void log(const std::string s ...)
+void debug_log(const std::string s ...)
 {
 	JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
 	plugin->AddMessage(s.c_str());
@@ -68,6 +71,24 @@ void log(const std::string s ...)
 	// fout << s << std::endl;
 	// fout.close();
 }
+
+
+class Callbacks : public WindowCallback {
+	JSMacroPlugin *plugin;
+public:
+	Callbacks(JSMacroPlugin *p) : plugin(p) {}
+	void ExecuteFile(const std::string &path, MQDocument doc) {
+		plugin->ExecScript(doc, path);
+		MQ_RefreshView(nullptr);
+	}
+	void ExecuteString(const std::string &code, MQDocument doc) {
+		plugin->ExecScriptString(doc, code);
+		MQ_RefreshView(nullptr);
+	}
+	void OnCloseWindow(MQDocument doc) {
+		plugin->WindowClose();
+	}
+};
 
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -91,7 +112,7 @@ static void WriteFile(const v8::FunctionCallbackInfo<v8::Value>& args) {
 		ss << (*str ? *str : "[NOT_STRING]");
 	}
 	f << ss.str() << std::endl;
-	log(ss.str().c_str());
+	debug_log(ss.str().c_str());
 	f.flush();
 }
 
@@ -143,13 +164,6 @@ MQBasePlugin *GetPluginClass()
 //---------------------------------------------------------------------------------------------------------------------
 JSMacroPlugin::JSMacroPlugin()
 {
-
-	V8::InitializeICUDefaultLocation("C:/tmp/test");
-	// V8::InitializeExternalStartupData("C:/tmp/test");
-
-	v8platform = platform::CreateDefaultPlatform();
-	V8::InitializePlatform(v8platform);
-	V8::Initialize();
 }
 
 
@@ -184,9 +198,21 @@ const char *JSMacroPlugin::EnumString(void)
 //---------------------------------------------------------------------------------------------------------------------
 BOOL JSMacroPlugin::Initialize()
 {
+	V8::InitializeICUDefaultLocation("C:/tmp/test");
+	// V8::InitializeExternalStartupData("C:/tmp/test");
+
+	platform = platform::CreateDefaultPlatform();
+	V8::InitializePlatform(platform);
+	V8::Initialize();
+
+	create_params.array_buffer_allocator =
+		v8::ArrayBuffer::Allocator::NewDefaultAllocator();
+	isolate = Isolate::New(create_params);
+
+	static Callbacks callback(this);
 	if (window == nullptr) {
 		MQWindowBase mainwnd = MQWindow::GetMainWindow();
-		window = new JSMacroWindow(mainwnd);
+		window = new JSMacroWindow(mainwnd, callback);
 	}
 	window->AddMessage("Initialized.");
 	return TRUE;
@@ -197,7 +223,13 @@ BOOL JSMacroPlugin::Initialize()
 //---------------------------------------------------------------------------------------------------------------------
 void JSMacroPlugin::Exit()
 {
-	delete v8platform;
+	delete platform;
+
+	// Dispose the isolate and tear down V8.
+	isolate->Dispose();
+	V8::Dispose();
+	V8::ShutdownPlatform();
+	delete create_params.array_buffer_allocator;
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -205,16 +237,7 @@ void JSMacroPlugin::Exit()
 //---------------------------------------------------------------------------------------------------------------------
 BOOL JSMacroPlugin::Activate(MQDocument doc, BOOL flag)
 {
-	MQ_RefreshView(NULL);
-
 	window->SetVisible(flag != 0);
-
-	if (flag != 0) {
-		ExecScript(doc, "C:/tmp/test.js");
-	}
-
-	MQ_RefreshView(nullptr);
-
 	return flag;
 }
 
@@ -223,6 +246,7 @@ BOOL JSMacroPlugin::Activate(MQDocument doc, BOOL flag)
 //---------------------------------------------------------------------------------------------------------------------
 BOOL JSMacroPlugin::IsActivated(MQDocument doc)
 {
+	debug_log(window->GetVisible()?"visible":"hidden");
 	return window->GetVisible();
 }
 
@@ -245,10 +269,6 @@ bool JSMacroPlugin::ExecuteCallback(MQDocument doc, void *option)
 
 void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
 
-	Isolate::CreateParams create_params;
-	create_params.array_buffer_allocator =
-		v8::ArrayBuffer::Allocator::NewDefaultAllocator();
-	Isolate* isolate = Isolate::New(create_params);
 	{
 		Isolate::Scope isolate_scope(isolate);
 
@@ -261,7 +281,7 @@ void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
 		// Enter the context for compiling and running the hello world script.
 		Context::Scope context_scope(context);
 
-		log("v8 core.js...");
+		debug_log("v8 core.js...");
 		{
 			TCHAR path[MAX_PATH];
 			GetModuleFileName(hInstance, path, MAX_PATH);
@@ -286,27 +306,23 @@ void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
 		// Compile the source code.
 		Local<Script> script = Script::Compile(context, source).ToLocalChecked();
 
-		log(std::string("Run: ") + fname);
+		debug_log(std::string("Run: ") + fname);
 		// Run the script to get the result.
 		TryCatch trycatch;
 		auto ret = script->Run(context);
 		if (!ret.IsEmpty()) {
 			Local<Value> result = ret.ToLocalChecked();
 			String::Utf8Value utf8(result);
-			log(*utf8);
-			log("ok.");
+			debug_log(*utf8);
+			debug_log("ok.");
 		}
 		else {
-			log("ERROR:");
+			debug_log("ERROR:");
 			Handle<Value> exception = trycatch.Exception();
 			String::Utf8Value exception_str(exception);
-			log(*exception_str);
+			debug_log(*exception_str);
 		}
 	}
 
-	// Dispose the isolate and tear down V8.
-	isolate->Dispose();
-	//V8::Dispose();
-	//V8::ShutdownPlatform();
-	delete create_params.array_buffer_allocator;
+
 }

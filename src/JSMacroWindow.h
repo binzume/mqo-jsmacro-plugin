@@ -9,12 +9,27 @@
 #include "MQWidget.h"
 
 
-class JSMacroWindow : public MQWindow
-{
-public:
-	MQListBox *m_MessageList;
 
-	JSMacroWindow(MQWindowBase& parent);
+class WindowCallback {
+public:
+	virtual void OnCloseWindow(MQDocument doc) {};
+	virtual void ExecuteFile(const std::string &path, MQDocument doc) {};
+	virtual void ExecuteString(const std::string &code, MQDocument doc) {};
+};
+
+class JSMacroWindow : public MQWindow {
+public:
+	JSMacroWindow(MQWindowBase &parent, WindowCallback &callback);
 
 	void AddMessage(const char *message);
+
+private:
+	WindowCallback &m_callback;
+
+	MQListBox *m_MessageList;
+	MQEdit *m_FilePathEdit;
+
+	BOOL OnHide(MQWidgetBase *sender, MQDocument doc);
+	BOOL OnClearClick(MQWidgetBase *sender, MQDocument doc);
+	BOOL OnExecuteClick(MQWidgetBase *sender, MQDocument doc);
 };
