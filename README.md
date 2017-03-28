@@ -8,7 +8,8 @@ JavaScriptでメタセコイアのマクロを書けるようにするプラグ�
 
 ## インストール
 
-`Plugins/Station` ディレクトリに [`JSMacro.dll`](https://github.com/binzume/mqo-jsmacro-plugin/raw/master/bin/JSMacro.dll) と [`JSMacro.dll.core.js`](https://github.com/binzume/mqo-jsmacro-plugin/raw/master/bin/JSMacro.dll.core.js) を置いて下さい．
+[`JSMacro.zip`](https://github.com/binzume/mqo-jsmacro-plugin/raw/master/bin/JSMacro.zip) を展開し，
+`Plugins/Station` ディレクトリに `JSMacro.dll` と `JSMacro.dll.core.js` を配置して下さい．
 
 DLLは64bit版です．(32ビット版が必要な場合はソースからビルドして下さい...)
 
