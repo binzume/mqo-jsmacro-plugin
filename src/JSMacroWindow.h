@@ -21,7 +21,7 @@ class JSMacroWindow : public MQWindow {
 public:
 	JSMacroWindow(MQWindowBase &parent, WindowCallback &callback);
 
-	void AddMessage(const char *message);
+	void AddMessage(const std::string &message, int tag = 0);
 
 private:
 	WindowCallback &m_callback;
@@ -30,6 +30,8 @@ private:
 	MQEdit *m_FilePathEdit;
 
 	BOOL OnHide(MQWidgetBase *sender, MQDocument doc);
+	BOOL onDrawListItem(MQWidgetBase * sender, MQDocument doc, MQListBoxDrawItemParam & param);
 	BOOL OnClearClick(MQWidgetBase *sender, MQDocument doc);
+	BOOL OnOpenScriptClick(MQWidgetBase *sender, MQDocument doc);
 	BOOL OnExecuteClick(MQWidgetBase *sender, MQDocument doc);
 };

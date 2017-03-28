@@ -52,8 +52,8 @@ public:
 	virtual BOOL IsActivated(MQDocument doc);
 	virtual void OnDraw(MQDocument doc, MQScene scene, int width, int height);
 	virtual void OnUpdateObjectList(MQDocument doc);
-	void AddMessage(const char *message) {
-		if (window) window->AddMessage(message);
+	void AddMessage(const std::string &message, int tag = 0) {
+		if (window) window->AddMessage(message, tag);
 	}
 	void ExecScript(MQDocument doc, const std::string &jsfile);
 	void ExecScriptString(MQDocument doc, const std::string &code) {};
@@ -84,10 +84,9 @@ public:
 	}
 };
 
-void debug_log(const std::string s ...)
-{
+void debug_log(const std::string s) {
 	JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
-	plugin->AddMessage(s.c_str());
+	plugin->AddMessage(s, 1);
 	// std::ofstream fout("C:/tmp/jsmacro.log", std::ios::app);
 	// fout << s << std::endl;
 	// fout.close();
@@ -114,7 +113,10 @@ static void WriteFile(const v8::FunctionCallbackInfo<v8::Value>& args) {
 		ss << (*str ? *str : "[NOT_STRING]");
 	}
 	f << ss.str() << std::endl;
-	debug_log(ss.str().c_str());
+
+	JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
+	plugin->AddMessage(ss.str(), 0);
+
 	f.flush();
 }
 
@@ -157,7 +159,7 @@ static Local<ObjectTemplate> NewProcessObject(Isolate* isolate) {
 	return obj;
 }
 
-Local<Object> NewDocumentObject(Isolate* isolate, MQDocument doc);
+void InstallMQDocument(Local<Object> global, Isolate* isolate, MQDocument doc);
 
 static Local<Context> CreateContext(Isolate *isolate, MQDocument doc) {
 	v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(isolate);
@@ -167,7 +169,7 @@ static Local<Context> CreateContext(Isolate *isolate, MQDocument doc) {
 	Local<Context> context = Context::New(isolate, nullptr, global);
 	Context::Scope context_scope(context);
 
-	context->Global()->Set(UTF8("document"), NewDocumentObject(isolate, doc));
+	InstallMQDocument(context->Global(), isolate, doc);
 
 	return context;
 }
@@ -232,7 +234,7 @@ BOOL JSMacroPlugin::Initialize()
 		MQWindowBase mainwnd = MQWindow::GetMainWindow();
 		window = new JSMacroWindow(mainwnd, callback);
 	}
-	window->AddMessage("Initialized.");
+	debug_log("Initialized.");
 	return TRUE;
 }
 
@@ -315,9 +317,23 @@ void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
 			std::ifstream jsfile(coreJsName);
 			std::stringstream buffer;
 			buffer << jsfile.rdbuf();
+			TryCatch trycatch;
 			Local<String> source = UTF8(buffer.str().c_str());
-			Local<Script> script = Script::Compile(context, source).ToLocalChecked();
-			script->Run(context).ToLocalChecked();
+			MaybeLocal<Script> script = Script::Compile(context, source);
+			if (script.IsEmpty()) {
+				debug_log("COMPILE ERROR:");
+				Handle<Value> exception = trycatch.Exception();
+				String::Utf8Value exception_str(exception);
+				debug_log(*exception_str);
+			} else {
+				auto ret = script.ToLocalChecked()->Run(context);
+				if (ret.IsEmpty()) {
+					debug_log("ERROR:");
+					Handle<Value> exception = trycatch.Exception();
+					String::Utf8Value exception_str(exception);
+					debug_log(*exception_str);
+				}
+			}
 		}
 
 		// Create a string containing the JavaScript source code.
@@ -325,26 +341,33 @@ void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
 		std::stringstream buffer;
 		buffer << jsfile.rdbuf();
 		Local<String> source = UTF8(buffer.str().c_str());
+		TryCatch trycatch;
+
+		debug_log(std::string("Run: ") + fname);
 
 		// Compile the source code.
-		Local<Script> script = Script::Compile(context, source).ToLocalChecked();
-
-		currentScriptPath = fname;
-		debug_log(std::string("Run: ") + fname);
-		// Run the script to get the result.
-		TryCatch trycatch;
-		auto ret = script->Run(context);
-		if (!ret.IsEmpty()) {
-			Local<Value> result = ret.ToLocalChecked();
-			String::Utf8Value utf8(result);
-			debug_log(*utf8);
-			debug_log("ok.");
-		}
-		else {
-			debug_log("ERROR:");
+		MaybeLocal<Script> script = Script::Compile(context, source);
+		if (script.IsEmpty()) {
+			debug_log("COMPILE ERROR:");
 			Handle<Value> exception = trycatch.Exception();
 			String::Utf8Value exception_str(exception);
 			debug_log(*exception_str);
+		} else {
+			currentScriptPath = fname;
+			auto ret = script.ToLocalChecked()->Run(context);
+			if (!ret.IsEmpty()) {
+				//Local<Value> result = ret.ToLocalChecked();
+				//String::Utf8Value utf8(result);
+				//debug_log(*utf8);
+				debug_log("ok.");
+			}
+			else {
+				debug_log("ERROR:");
+				Handle<Value> exception = trycatch.Exception();
+				String::Utf8Value exception_str(exception);
+				debug_log(*exception_str);
+			}
 		}
 	}
+	isolate->IdleNotification(100);
 }
