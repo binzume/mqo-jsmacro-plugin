@@ -7,6 +7,7 @@
 
 #include "libplatform/libplatform.h"
 #include "v8.h"
+
 #define UTF8(s) v8::String::NewFromUtf8(isolate, s, v8::NewStringType::kNormal).ToLocalChecked()
 
 using namespace v8;
@@ -391,7 +392,7 @@ static void GetMaterials(const Local<Name> property, const PropertyCallbackInfo<
 Local<Object> NewDocumentObject(Isolate* isolate, MQDocument doc) {
 	auto obj = ObjectTemplate::New(isolate);
 	obj->SetInternalFieldCount(1);
-	obj->Set(UTF8("compact"), FunctionTemplate::New(isolate, CompactDocument));
+	obj->Set(UTF8("compact"), FunctionTemplate::New(isolate, CompactDocument, External::New(isolate, doc)));
 	obj->Set(UTF8("addObject"), FunctionTemplate::New(isolate, AddObject, External::New(isolate, doc)));
 	obj->Set(UTF8("createObject"), FunctionTemplate::New(isolate, CreateObject));
 	obj->SetLazyDataProperty(UTF8("objects"), GetObjects);
