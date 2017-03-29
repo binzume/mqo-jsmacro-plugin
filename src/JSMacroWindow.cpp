@@ -65,7 +65,12 @@ BOOL JSMacroWindow::OnOpenScriptClick(MQWidgetBase *sender, MQDocument doc) {
 BOOL JSMacroWindow::OnExecuteClick(MQWidgetBase *sender, MQDocument doc) {
 	auto str = m_FilePathEdit->GetText();
 	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-	m_callback.ExecuteFile(converter.to_bytes(str), doc);
+	std::string code = converter.to_bytes(str);
+	if (code.find("js:") == 0) {
+		m_callback.ExecuteString(code.substr(3), doc);
+	} else {
+		m_callback.ExecuteFile(code, doc);
+	}
 	return FALSE;
 }
 
@@ -76,8 +81,15 @@ BOOL JSMacroWindow::OnHide(MQWidgetBase *sender, MQDocument doc) {
 }
 
 BOOL JSMacroWindow::onDrawListItem(MQWidgetBase* sender, MQDocument doc, MQListBoxDrawItemParam& param) {
-	if (m_MessageList->GetItemTag(param.ItemIndex) != 0) {
-		param.Canvas->SetColor(128, 255, 128, 64);
+	auto tag = m_MessageList->GetItemTag(param.ItemIndex);
+	if (tag != 0) {
+		if (tag == 2) {
+			// Error
+			param.Canvas->SetColor(255, 128, 128, 64);
+		} else {
+			// Normal
+			param.Canvas->SetColor(128, 255, 128, 64);
+		}
 		param.Canvas->FillRect(param.X, param.Y, param.Width, param.Height);
 	}
 	// param.Canvas->DrawText(m_MessageList->GetItem(param.ItemIndex).c_str(), param.X + 10, param.Y, param.Width, param.Height, false);
