@@ -8,9 +8,9 @@ JavaScriptでメタセコイアのマクロを書けるようにするプラグ�
 **特に理由が無い限り標準のPythonスクリプトを使うのを推奨**
 
 
-## インストール
+## ダウンロード＆インストール
 
-[`JSMacro.zip`](https://github.com/binzume/mqo-jsmacro-plugin/raw/master/bin/JSMacro.zip) を展開し，
+[`JSMacro.zip`](https://github.com/binzume/mqo-jsmacro-plugin/releases/tag/alpha0) を展開し，
 `Plugins/Station` ディレクトリに `JSMacro.dll` と `JSMacro.dll.core.js` を配置して下さい．
 
 DLLは64bit版です．(32ビット版は用意する予定はないですが，必要な場合はソースからビルドして下さい...)
@@ -48,9 +48,13 @@ DLLは64bit版です．(32ビット版は用意する予定はないですが，
 - document.materials[index].id
 - document.materials[index].name
 - document.materials[index].color
-- document.objects.append(mat)
+- document.materials.append(mat)
+- document.scene.cameraPosition
+- document.scene.cameraLookAt
+- document.scene.cameraAngle
 - document.compact()
 - console.log("message")
+- setInterval(), setTimeout()
 
 
 #### 注意点
