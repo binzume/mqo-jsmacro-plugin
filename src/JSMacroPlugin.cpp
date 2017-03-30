@@ -37,20 +37,30 @@ BOOL APIENTRY DllMain( HANDLE hModule,
 }
 
 static Local<Context> CreateContext(Isolate *isolate, MQDocument doc);
-class JsContextScope {
+class JsContext {
+	Isolate *isolate;
 	Isolate::Scope isolate_scope;
 	HandleScope handle_scope;
 	Local<Context> context;
 	Context::Scope context_scope;
 public:
-	JsContextScope(Isolate *isolate, MQDocument doc) : isolate_scope(isolate), handle_scope(isolate),
-		context(CreateContext(isolate, doc)), context_scope(context) {}
+	v8::Persistent<Function> nextTickFun;
+	UINT_PTR tickTimerId;
+	JsContext(Isolate *_isolate, MQDocument doc) : isolate(_isolate),  isolate_scope(_isolate), handle_scope(_isolate),
+		context(CreateContext(_isolate, doc)), context_scope(context) {}
+	v8::MaybeLocal<Value> ExecScript(const std::string &code, const std::string &maybepath = "");
+	~JsContext(){
+		if (tickTimerId) {
+			KillTimer(NULL, tickTimerId);
+		}
+	}
 };
 
 class JSMacroPlugin : public MQStationPlugin
 {
 public:
 	std::string currentScriptPath;
+	JSMacroWindow *window;
 	JSMacroPlugin();
 
 	virtual void GetPlugInID(DWORD *Product, DWORD *ID);
@@ -60,24 +70,32 @@ public:
 	virtual void Exit();
 	virtual BOOL Activate(MQDocument doc, BOOL flag);
 	virtual BOOL IsActivated(MQDocument doc);
+	virtual void OnEndDocument(MQDocument doc) {
+		if (jsContext) {
+			delete jsContext;
+			jsContext = nullptr;
+		}
+	};
 	virtual void OnDraw(MQDocument doc, MQScene scene, int width, int height);
 	virtual void OnUpdateObjectList(MQDocument doc);
+	virtual const char *EnumSubCommand(int index) { return index == 0 ? "Run" : nullptr; };
+	virtual const wchar_t *GetSubCommandString(int index) { return index == 0 ? L"Run" : nullptr; };
+	virtual BOOL OnSubCommand(MQDocument doc, int index) { window->Execute(doc); return TRUE; };
 	void AddMessage(const std::string &message, int tag = 0) {
 		if (window) window->AddMessage(message, tag);
 	}
 	void ExecScript(MQDocument doc, const std::string &jsfile);
-	void ExecScriptString(MQDocument doc, const std::string &code) {
-		if (!contextScope) contextScope = new JsContextScope(isolate, doc);
-		ExecScriptCurrentContext(code);
-	};
-	bool ExecScriptCurrentContext(const std::string &code, const std::string &maybepath = "");
+	void ExecScriptString(MQDocument doc, const std::string &code);
+	v8::MaybeLocal<Value> ExecScriptCurrentContext(const std::string &code, const std::string &maybepath = "");
+	static void SetNextTick(const FunctionCallbackInfo<Value>& args);
+	static VOID CALLBACK TickTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime);
+	JsContext* GetJsContext(MQDocument doc);
 	std::string GetScriptDir() const;
 protected:
-	JSMacroWindow *window;
 	v8::Platform* platform;
 	v8::Isolate* isolate;
 	v8::Isolate::CreateParams create_params;
-	JsContextScope *contextScope;
+	JsContext *jsContext;
 
 	virtual bool ExecuteCallback(MQDocument doc, void *option);
 };
@@ -111,7 +129,6 @@ void debug_log(const std::string s, int tag = 1) {
 //  js stdout (debug)
 //---------------------------------------------------------------------------------------------------------------------
 
-
 static void WriteFile(const v8::FunctionCallbackInfo<v8::Value>& args) {
 	std::ofstream &f = *(std::ofstream*)args.Data().As<External>()->Value();
 	std::stringstream ss;
@@ -144,18 +161,56 @@ static void LoadScript(const FunctionCallbackInfo<Value>& args) {
 		std::ifstream jsfile( plugin->GetScriptDir() + *path);
 		std::stringstream buffer;
 		buffer << jsfile.rdbuf();
+		jsfile.close();
 		if (jsfile.fail()) {
 			debug_log(std::string("Read error: ") + *path, 2);
 		}
-		bool ret = plugin->ExecScriptCurrentContext(buffer.str(), *path);
-		args.GetReturnValue().Set(Boolean::New(isolate,ret));
+		auto ret = plugin->ExecScriptCurrentContext(buffer.str(), *path);
+		if (!ret.IsEmpty()) {
+			args.GetReturnValue().Set(ret.ToLocalChecked());
+		}
 	}
+	args.GetReturnValue().SetUndefined();
+}
+
+static void ShowWindow(const FunctionCallbackInfo<Value>& args) {
+	Isolate* isolate = args.GetIsolate();
+	JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
+	if (args.kArgsLength >= 1) {
+		plugin->window->SetVisible(args[0].As<Boolean>()->BooleanValue());
+	} else {
+		plugin->window->SetVisible(true);
+	}
+	args.GetReturnValue().SetUndefined();
+}
+
+VOID CALLBACK JSMacroPlugin::TickTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime) {
+	JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
+	KillTimer(hwnd, idEvent);
+	if (plugin->jsContext && plugin->jsContext->tickTimerId == idEvent) {
+		plugin->jsContext->tickTimerId = 0;
+		plugin->BeginCallback(nullptr);
+	}
+}
+
+void JSMacroPlugin::SetNextTick(const FunctionCallbackInfo<Value>& args) {
+	Isolate* isolate = args.GetIsolate();
+	JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
+	plugin->window->SetVisible(args[0].As<Boolean>()->BooleanValue());
+	plugin->jsContext->nextTickFun.Reset(isolate, args[0].As<Function>());
+	uint32_t timerMs = 10;
+	if (args.kArgsLength > 1) {
+		timerMs = args[1].As<Integer>()->Uint32Value();
+	}
+	if (plugin->jsContext->tickTimerId) {
+		KillTimer(NULL, plugin->jsContext->tickTimerId);
+	}
+	plugin->jsContext->tickTimerId = SetTimer(NULL, 1234, timerMs, JSMacroPlugin::TickTimerProc);
 	args.GetReturnValue().SetUndefined();
 }
 
 static Local<ObjectTemplate> NewProcessObject(Isolate* isolate) {
 	auto obj = ObjectTemplate::New(isolate);
-
 
 	Handle<External> selfRef = External::New(isolate, (void*)(new std::ofstream("C:/tmp/console.log.txt", std::ios::app)));
 	auto fileObj = ObjectTemplate::New(isolate);
@@ -164,22 +219,22 @@ static Local<ObjectTemplate> NewProcessObject(Isolate* isolate) {
 
 	obj->Set(UTF8("stdout"), fileObj);
 	obj->Set(UTF8("stderr"), fileObj);
+	obj->Set(UTF8("nextTick"), FunctionTemplate::New(isolate, JSMacroPlugin::SetNextTick));
+	obj->Set(UTF8("showWindow"), FunctionTemplate::New(isolate, ShowWindow));
 	obj->Set(UTF8("load"), FunctionTemplate::New(isolate, LoadScript));
 	return obj;
 }
 
-void InstallMQDocument(Local<Object> global, Isolate* isolate, MQDocument doc);
+void InstallMQDocument(Local<ObjectTemplate> global, Isolate* isolate, MQDocument doc);
 
 static Local<Context> CreateContext(Isolate *isolate, MQDocument doc) {
+
 	v8::Local<v8::ObjectTemplate> global = v8::ObjectTemplate::New(isolate);
 
 	global->Set(UTF8("process"), NewProcessObject(isolate));
+	InstallMQDocument(global, isolate, doc);
 
 	Local<Context> context = Context::New(isolate, nullptr, global);
-	Context::Scope context_scope(context);
-
-	InstallMQDocument(context->Global(), isolate, doc);
-
 	return context;
 }
 
@@ -195,7 +250,7 @@ MQBasePlugin *GetPluginClass()
 //---------------------------------------------------------------------------------------------------------------------
 //    コンストラクタ
 //---------------------------------------------------------------------------------------------------------------------
-JSMacroPlugin::JSMacroPlugin() : contextScope(nullptr)
+JSMacroPlugin::JSMacroPlugin() : jsContext(nullptr)
 {
 }
 
@@ -259,8 +314,9 @@ void JSMacroPlugin::Exit()
 	V8::Dispose();
 	V8::ShutdownPlatform();
 	delete create_params.array_buffer_allocator;
-	if (contextScope) {
-		delete contextScope;
+	if (jsContext) {
+		delete jsContext;
+		jsContext = nullptr;
 	}
 }
 
@@ -295,6 +351,12 @@ void JSMacroPlugin::OnUpdateObjectList(MQDocument doc)
 
 bool JSMacroPlugin::ExecuteCallback(MQDocument doc, void *option)
 {
+	if (jsContext != nullptr && !jsContext->nextTickFun.IsEmpty()) {
+		auto fun = jsContext->nextTickFun.Get(isolate);
+		jsContext->nextTickFun.Reset();
+		fun->Call(Null(isolate), 0, nullptr);
+		return true;
+	}
 	return false;
 }
 
@@ -305,9 +367,13 @@ std::string JSMacroPlugin::GetScriptDir() const {
 	}
 	return "";
 }
+MaybeLocal<Value> JSMacroPlugin::ExecScriptCurrentContext(const std::string &source, const std::string &maybepath) {
+	return jsContext->ExecScript(source, maybepath);
+}
 
-bool JSMacroPlugin::ExecScriptCurrentContext(const std::string &source, const std::string &maybepath) {
+MaybeLocal<Value> JsContext::ExecScript(const std::string &source, const std::string &maybepath) {
 	Local<Context> context = isolate->GetCurrentContext();
+	EscapableHandleScope handleScope(isolate);
 	TryCatch trycatch;
 
 	// Compile the source code.
@@ -321,6 +387,7 @@ bool JSMacroPlugin::ExecScriptCurrentContext(const std::string &source, const st
 		ss << *exception_str << " line:" << message->GetLineNumber();
 		debug_log(ss.str(), 2);
 	} else {
+
 		auto ret = script.ToLocalChecked()->Run(context);
 		if (ret.IsEmpty()) {
 			Handle<Value> exception = trycatch.Exception();
@@ -329,19 +396,16 @@ bool JSMacroPlugin::ExecScriptCurrentContext(const std::string &source, const st
 			std::stringstream ss;
 			ss << *exception_str <<  " Line:" << message->GetLineNumber() << " (" << maybepath << ")";
 			debug_log(ss.str(), 2);
-			return false;
+			return MaybeLocal<Value>();
 		}
+		return handleScope.Escape(ret.ToLocalChecked());
 	}
-	return true;
+	return MaybeLocal<Value>();
 }
 
-void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
-	if (contextScope) {
-		delete contextScope;
-	}
-	contextScope = new JsContextScope(isolate, doc);
-
-	{
+JsContext* JSMacroPlugin::GetJsContext(MQDocument doc) {
+	if (!jsContext) {
+		jsContext = new JsContext(isolate, doc);
 		TCHAR path[MAX_PATH];
 		GetModuleFileName(hInstance, path, MAX_PATH);
 		std::string coreJsName = std::string(path) + ".core.js";
@@ -349,25 +413,45 @@ void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
 		std::ifstream jsfile(coreJsName);
 		std::stringstream buffer;
 		buffer << jsfile.rdbuf();
+		jsfile.close();
 		if (jsfile.fail()) {
 			debug_log("Read error: " + coreJsName, 2);
 		} else {
-			ExecScriptCurrentContext(buffer.str(), "core.js");
+			jsContext->ExecScript(buffer.str(), "core.js");
 		}
+	}
+	return jsContext;
+}
+
+void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
+	if (jsContext) {
+		delete jsContext;
+		jsContext = nullptr;
 	}
 
 	debug_log(std::string("Run: ") + fname);
 	std::ifstream jsfile(fname);
 	std::stringstream buffer;
 	buffer << jsfile.rdbuf();
-	currentScriptPath = fname;
+	jsfile.close();
 	if (jsfile.fail()) {
 		debug_log("Read error: " + fname, 2);
 	} else {
-		if (ExecScriptCurrentContext(buffer.str(), currentScriptPath)) {
+		GetJsContext(doc);
+		currentScriptPath = fname;
+		if (!jsContext->ExecScript(buffer.str(), currentScriptPath).IsEmpty()) {
 			debug_log("ok.");
 		}
 	}
-
 	isolate->IdleNotification(100);
 }
+
+void JSMacroPlugin::ExecScriptString(MQDocument doc, const std::string &code) {
+	debug_log("> "+ code);
+	auto ret = GetJsContext(doc)->ExecScript(code);
+	if (!ret.IsEmpty()) {
+		v8::String::Utf8Value resultStr(ret.ToLocalChecked());
+		debug_log(*resultStr);
+	}
+	isolate->IdleNotification(100);
+};

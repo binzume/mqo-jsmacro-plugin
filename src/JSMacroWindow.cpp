@@ -61,8 +61,7 @@ BOOL JSMacroWindow::OnOpenScriptClick(MQWidgetBase *sender, MQDocument doc) {
 	return FALSE;
 }
 
-
-BOOL JSMacroWindow::OnExecuteClick(MQWidgetBase *sender, MQDocument doc) {
+BOOL JSMacroWindow::Execute(MQDocument doc) {
 	auto str = m_FilePathEdit->GetText();
 	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
 	std::string code = converter.to_bytes(str);
@@ -71,6 +70,17 @@ BOOL JSMacroWindow::OnExecuteClick(MQWidgetBase *sender, MQDocument doc) {
 	} else {
 		m_callback.ExecuteFile(code, doc);
 	}
+	return TRUE;
+}
+
+BOOL JSMacroWindow::ExecuteProc(MQDocument doc, void *option) {
+	JSMacroWindow *self = static_cast<JSMacroWindow*>(option);
+	return self->Execute(doc);
+}
+
+BOOL JSMacroWindow::OnExecuteClick(MQWidgetBase *sender, MQDocument doc) {
+	// Execute(doc);
+	MQ_StationCallback(JSMacroWindow::ExecuteProc, this);
 	return FALSE;
 }
 

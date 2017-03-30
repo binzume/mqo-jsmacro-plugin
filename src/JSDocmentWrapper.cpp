@@ -52,6 +52,16 @@ struct Holder {
 	}
 };
 
+template<typename T, typename T0>
+static inline T GetInternal(const v8::FunctionCallbackInfo<T0>& args) {
+	v8::Local<v8::Object> self = args.Holder();
+	return static_cast<T>(self->GetInternalField(0).As<v8::External>()->Value());
+}
+template<typename T, typename T0>
+static inline T GetInternal(const v8::PropertyCallbackInfo<T0>& info) {
+	v8::Local<v8::Object> self = info.Holder();
+	return static_cast<T>(self->GetInternalField(0).As<v8::External>()->Value());
+}
 
 using namespace v8;
 
@@ -65,7 +75,7 @@ static void GetVertCount(const Local<String> property, const PropertyCallbackInf
 	Local<Object> _obj = Local<Object>::Cast(self->Get(UTF8("_obj")));
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
 
-	info.GetReturnValue().Set(Integer::New(isolate, obj->GetVertexCount()));
+	info.GetReturnValue().Set(obj->GetVertexCount());
 }
 
 static void GetVertex(uint32_t index, const PropertyCallbackInfo<Value>& info) {
@@ -115,7 +125,7 @@ static void AddVertex(const FunctionCallbackInfo<Value>& args) {
 		p.y = (float)args[1].As<Number>()->Value();
 		p.z = (float)args[2].As<Number>()->Value();
 		int index = obj->AddVertex(p);
-		args.GetReturnValue().Set(Integer::New(isolate, index));
+		args.GetReturnValue().Set(index);
 	}
 }
 
@@ -150,7 +160,7 @@ static void GetFaceCount(const Local<String> property, const PropertyCallbackInf
 	Local<Object> _obj = Local<Object>::Cast(self->Get(UTF8("_obj")));
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
 
-	info.GetReturnValue().Set(Integer::New(isolate, obj->GetFaceCount()));
+	info.GetReturnValue().Set(obj->GetFaceCount());
 }
 
 static void InvertFace(const FunctionCallbackInfo<Value>& args) {
@@ -211,7 +221,7 @@ static void AddFace(const FunctionCallbackInfo<Value>& args) {
 		if (args.kArgsLength >= 2) {
 			obj->SetFaceMaterial(index, args[1].As<Integer>()->Int32Value());
 		}
-		args.GetReturnValue().Set(Integer::New(isolate, index));
+		args.GetReturnValue().Set(index);
 	}
 }
 
@@ -226,9 +236,9 @@ static void DeleteFace(uint32_t index, const PropertyCallbackInfo<Boolean>& info
 
 static void GetFaces(const Local<Name> property, const PropertyCallbackInfo<Value>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQObject obj = static_cast<MQObject>(self->GetInternalField(0).As<External>()->Value());
+	MQObject obj = GetInternal<MQObject>(info);
 
+	Local<Object> self = info.Holder();
 	auto facest = ObjectTemplate::New(isolate);
 	facest->SetIndexedPropertyHandler(GetFace, nullptr, nullptr, DeleteFace);
 	facest->SetAccessor(UTF8("length"), GetFaceCount);
@@ -242,65 +252,57 @@ static void GetFaces(const Local<Name> property, const PropertyCallbackInfo<Valu
 
 static void GetObjectId(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQObject obj = static_cast<MQObject>(self->GetInternalField(0).As<External>()->Value());
+	MQObject obj = GetInternal<MQObject>(info);
 
-	info.GetReturnValue().Set(Integer::New(isolate, obj->GetUniqueID()));
+	info.GetReturnValue().Set(obj->GetUniqueID());
 }
 
 static void GetObjectName(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQObject obj = static_cast<MQObject>(self->GetInternalField(0).As<External>()->Value());
+	MQObject obj = GetInternal<MQObject>(info);
 
 	info.GetReturnValue().Set(UTF8(sjisToUtf8(obj->GetName()).c_str()));
 }
 
 static void SetObjectName(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQObject obj = static_cast<MQObject>(self->GetInternalField(0).As<External>()->Value());
+	MQObject obj = GetInternal<MQObject>(info);
 
 	obj->SetName(utf8ToSjis(*String::Utf8Value(value)).c_str());
 }
 
 static void GetObjectVisible(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQObject obj = static_cast<MQObject>(self->GetInternalField(0).As<External>()->Value());
+	MQObject obj = GetInternal<MQObject>(info);
 
-	info.GetReturnValue().Set(Boolean::New(isolate, obj->GetVisible() != 0));
+	info.GetReturnValue().Set(obj->GetVisible() != 0);
 }
 
 static void SetObjectVisible(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQObject obj = static_cast<MQObject>(self->GetInternalField(0).As<External>()->Value());
+	MQObject obj = GetInternal<MQObject>(info);
 
 	obj->SetVisible(value.As<Boolean>()->Value() ? 0xFFFFFFFF : 0);
 }
 
 static void GetObjectSelected(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQObject obj = static_cast<MQObject>(self->GetInternalField(0).As<External>()->Value());
+	MQObject obj = GetInternal<MQObject>(info);
 
-	info.GetReturnValue().Set(Boolean::New(isolate, obj->GetSelected() != 0));
+	info.GetReturnValue().Set(obj->GetSelected() != 0);
 }
 
 static void SetObjectSelected(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQObject obj = static_cast<MQObject>(self->GetInternalField(0).As<External>()->Value());
+	MQObject obj = GetInternal<MQObject>(info);
 
 	obj->SetSelected(value.As<Boolean>()->Value());
 }
 
 static void FreezeObject(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
-	Local<Object> self = args.Holder();
-	Local<External> wrap = Local<External>::Cast(self->GetInternalField(0));
-	MQObject obj = static_cast<MQObject>(wrap->Value());
+	MQObject obj = GetInternal<MQObject>(args);
+
 	int flag;
 	if (args.kArgsLength > 0) {
 		flag = args[0].As<Integer>()->Int32Value();
@@ -312,17 +314,15 @@ static void FreezeObject(const FunctionCallbackInfo<Value>& args) {
 
 static void CompactObject(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
-	Local<Object> self = args.Holder();
-	Local<External> wrap = Local<External>::Cast(self->GetInternalField(0));
-	MQObject obj = static_cast<MQObject>(wrap->Value());
+	MQObject obj = GetInternal<MQObject>(args);
+
 	obj->Compact();
 }
 
 static void MergeObject(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
-	Local<Object> self = args.Holder();
-	Local<External> wrap = Local<External>::Cast(self->GetInternalField(0));
-	MQObject obj = static_cast<MQObject>(wrap->Value());
+	MQObject obj = GetInternal<MQObject>(args);
+
 	MQObject src = static_cast<MQObject>(args[0].As<Object>()->GetInternalField(0).As<External>()->Value());
 	obj->Merge(src);
 }
@@ -335,8 +335,7 @@ static Handle<Object> MQObjectWrap(Isolate* isolate, MQObject o) {
 
 static void CloneObject(const FunctionCallbackInfo<Value>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQObject obj = static_cast<MQObject>(self->GetInternalField(0).As<External>()->Value());
+	MQObject obj = GetInternal<MQObject>(info);
 
 	MQObject newObject = obj->Clone();
 
@@ -389,7 +388,7 @@ static void AddObject(const FunctionCallbackInfo<Value>& args) {
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
 
 	int index = doc->AddObject(obj);
-	args.GetReturnValue().Set(Integer::New(isolate, index));
+	args.GetReturnValue().Set(index);
 }
 
 static void DeleteObject(const FunctionCallbackInfo<Value>& args) {
@@ -402,14 +401,6 @@ static void DeleteObject(const FunctionCallbackInfo<Value>& args) {
 	if (idx >= 0) {
 		doc->DeleteObject(idx);
 	}
-	args.GetReturnValue().SetUndefined();
-}
-
-static void CompactDocument(const FunctionCallbackInfo<Value>& args) {
-	Isolate* isolate = args.GetIsolate();
-	MQDocument doc = static_cast<MQDocument>(args.Data().As<External>()->Value());
-
-	doc->Compact();
 	args.GetReturnValue().SetUndefined();
 }
 
@@ -427,8 +418,8 @@ static Handle<Array> MQObjectsAsArray(Isolate* isolate, MQDocument doc) {
 
 static void GetObjects(const Local<Name> property, const PropertyCallbackInfo<Value>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQDocument doc = static_cast<MQDocument>(self->GetInternalField(0).As<External>()->Value());
+	MQDocument doc = GetInternal<MQDocument>(info);
+
 	info.GetReturnValue().Set(MQObjectsAsArray(isolate, doc));
 }
 
@@ -438,32 +429,29 @@ static void GetObjects(const Local<Name> property, const PropertyCallbackInfo<Va
 //---------------------------------------------------------------------------------------------------------------------
 static void GetMaterialId(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQMaterial m = static_cast<MQMaterial>(self->GetInternalField(0).As<External>()->Value());
+	MQMaterial obj = GetInternal<MQMaterial>(info);
 
-	info.GetReturnValue().Set(Integer::New(isolate, m->GetUniqueID()));
+	info.GetReturnValue().Set(obj->GetUniqueID());
 }
 
 static void GetMaterialName(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQMaterial obj = static_cast<MQMaterial>(self->GetInternalField(0).As<External>()->Value());
+	MQMaterial obj = GetInternal<MQMaterial>(info);
 
 	info.GetReturnValue().Set(UTF8(sjisToUtf8(obj->GetName()).c_str()));
 }
 
 static void SetMaterialName(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQMaterial obj = static_cast<MQMaterial>(self->GetInternalField(0).As<External>()->Value());
+	MQMaterial obj = GetInternal<MQMaterial>(info);
 
 	obj->SetName(utf8ToSjis(*String::Utf8Value(value)).c_str());
 }
 
 static void GetMaterialColor(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQMaterial m = static_cast<MQMaterial>(self->GetInternalField(0).As<External>()->Value());
+	MQMaterial m = GetInternal<MQMaterial>(info);
+
 	MQColor color = m->GetColor();
 	float alpha = m->GetAlpha();
 
@@ -478,8 +466,8 @@ static void GetMaterialColor(const Local<String> property, const PropertyCallbac
 
 static void SetMaterialColor(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQMaterial m = static_cast<MQMaterial>(self->GetInternalField(0).As<External>()->Value());
+	MQMaterial m = GetInternal<MQMaterial>(info);
+
 	Local<Object> c = value.As<Object>();
 
 	MQColor color;
@@ -537,7 +525,7 @@ static void AddMaterial(const FunctionCallbackInfo<Value>& args) {
 	MQMaterial obj = static_cast<MQMaterial>(_obj->GetInternalField(0).As<External>()->Value());
 
 	int index = doc->AddMaterial(obj);
-	args.GetReturnValue().Set(Integer::New(isolate, index));
+	args.GetReturnValue().Set(index);
 }
 
 static void DeleteMaterial(const FunctionCallbackInfo<Value>& args) {
@@ -552,8 +540,8 @@ static void DeleteMaterial(const FunctionCallbackInfo<Value>& args) {
 
 static void GetMaterials(const Local<Name> property, const PropertyCallbackInfo<Value>& info) {
 	Isolate* isolate = info.GetIsolate();
-	Local<Object> self = info.Holder();
-	MQDocument doc = static_cast<MQDocument>(self->GetInternalField(0).As<External>()->Value());
+	MQDocument doc = GetInternal<MQDocument>(info);
+
 	Handle<Array> array = Array::New(isolate, doc->GetMaterialCount());
 	for (int i = 0; i < doc->GetMaterialCount(); i++) {
 		if (doc->GetMaterial(i) != nullptr) {
@@ -565,19 +553,164 @@ static void GetMaterials(const Local<Name> property, const PropertyCallbackInfo<
 	info.GetReturnValue().Set(array);
 }
 
+//---------------------------------------------------------------------------------------------------------------------
+// MQScene
+//---------------------------------------------------------------------------------------------------------------------
+static void GetCameraPosition(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQScene s = GetInternal<MQScene>(info);
+
+	MQPoint p = s->GetCameraPosition();
+	auto obj = Object::New(isolate);
+	obj->Set(UTF8("x"), Number::New(isolate, p.x));
+	obj->Set(UTF8("y"), Number::New(isolate, p.y));
+	obj->Set(UTF8("z"), Number::New(isolate, p.z));
+
+	info.GetReturnValue().Set(obj);
+}
+
+static void SetCameraPosition(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQScene s = GetInternal<MQScene>(info);
+
+	MQPoint p;
+	p.x = (float)value.As<Object>()->Get(UTF8("x")).As<Number>()->NumberValue();
+	p.y = (float)value.As<Object>()->Get(UTF8("y")).As<Number>()->NumberValue();
+	p.z = (float)value.As<Object>()->Get(UTF8("z")).As<Number>()->NumberValue();
+	s->SetCameraPosition(p);
+}
+
+static void GetCameraLookAt(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQScene s = GetInternal<MQScene>(info);
+
+	MQPoint p = s->GetLookAtPosition();
+	auto obj = Object::New(isolate);
+	obj->Set(UTF8("x"), Number::New(isolate, p.x));
+	obj->Set(UTF8("y"), Number::New(isolate, p.y));
+	obj->Set(UTF8("z"), Number::New(isolate, p.z));
+
+	info.GetReturnValue().Set(obj);
+}
+
+static void SetCameraLookAt(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQScene s = GetInternal<MQScene>(info);
+
+	MQPoint p;
+	p.x = (float)value.As<Object>()->Get(UTF8("x")).As<Number>()->NumberValue();
+	p.y = (float)value.As<Object>()->Get(UTF8("y")).As<Number>()->NumberValue();
+	p.z = (float)value.As<Object>()->Get(UTF8("z")).As<Number>()->NumberValue();
+	s->SetLookAtPosition(p);
+}
+
+static void GetCameraAngle(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQScene s = GetInternal<MQScene>(info);
+
+	MQAngle p = s->GetCameraAngle();
+	auto obj = Object::New(isolate);
+	obj->Set(UTF8("bank"), Number::New(isolate, p.bank));
+	obj->Set(UTF8("head"), Number::New(isolate, p.head));
+	obj->Set(UTF8("pitch"), Number::New(isolate, p.pitch));
+
+	info.GetReturnValue().Set(obj);
+}
+
+static void SetCameraAngle(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQScene s = GetInternal<MQScene>(info);
+
+	MQAngle p;
+	p.bank = (float)value.As<Object>()->Get(UTF8("bank")).As<Number>()->NumberValue();
+	p.head = (float)value.As<Object>()->Get(UTF8("head")).As<Number>()->NumberValue();
+	p.pitch = (float)value.As<Object>()->Get(UTF8("pitch")).As<Number>()->NumberValue();
+	s->SetCameraAngle(p);
+}
+
+static void GetScene(const Local<Name> property, const PropertyCallbackInfo<Value>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQDocument doc = GetInternal<MQDocument>(info);
+
+	MQScene scene = doc->GetScene(0);
+
+	auto objt = ObjectTemplate::New(isolate);
+	objt->SetInternalFieldCount(1);
+	objt->SetAccessor(UTF8("cameraPosition"), GetCameraPosition, SetCameraPosition);
+	objt->SetAccessor(UTF8("cameraAngle"), GetCameraAngle, SetCameraAngle);
+	objt->SetAccessor(UTF8("cameraLookAt"), GetCameraLookAt, SetCameraLookAt);
+
+	Local<Object> s = objt->NewInstance();
+	s->SetInternalField(0, External::New(isolate, scene));
+
+	info.GetReturnValue().Set(s);
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+// MQDocument
+//---------------------------------------------------------------------------------------------------------------------
+
+static void CompactDocument(const FunctionCallbackInfo<Value>& args) {
+	Isolate* isolate = args.GetIsolate();
+	MQDocument doc = GetInternal<MQDocument>(args);
+
+	doc->Compact();
+	args.GetReturnValue().SetUndefined();
+}
+
+static void ClearSelect(const FunctionCallbackInfo<Value>& args) {
+	Isolate* isolate = args.GetIsolate();
+	MQDocument doc = GetInternal<MQDocument>(args);
+
+	doc->ClearSelect(MQDOC_CLEARSELECT_ALL);
+	args.GetReturnValue().SetUndefined();
+}
+
+static void GetSelectetVertex(const FunctionCallbackInfo<Value>& args) {
+	Isolate* isolate = args.GetIsolate();
+	MQDocument doc = GetInternal<MQDocument>(args);
+
+	Handle<Array> array = Array::New(isolate);
+	int n = 0;
+	for (int i = 0; i < doc->GetObjectCount(); i++) {
+		MQObject obj = doc->GetObject(i);
+		if (obj != nullptr) {
+			int vs = obj->GetVertexCount();
+			for (int j = 0; j < vs; j++) {
+				if (doc->IsSelectVertex(i, j)) {
+					Handle<Array> selected = Array::New(isolate, 2);
+					selected->Set(0, Integer::New(isolate, i));
+					selected->Set(1, Integer::New(isolate, j));
+					array->Set(n, selected);
+					n++;
+				}
+			}
+		}
+	}
+	args.GetReturnValue().Set(array);
+}
+
 static Local<Object> NewDocumentObject(Isolate* isolate, MQDocument doc) {
 	auto obj = ObjectTemplate::New(isolate);
 	obj->SetInternalFieldCount(1);
-	obj->Set(UTF8("compact"), FunctionTemplate::New(isolate, CompactDocument, External::New(isolate, doc)));
+	obj->Set(UTF8("compact"), FunctionTemplate::New(isolate, CompactDocument));
+	obj->Set(UTF8("clearSelect"), FunctionTemplate::New(isolate, ClearSelect));
+	obj->Set(UTF8("getSelectedVertexes"), FunctionTemplate::New(isolate, GetSelectetVertex));
 	obj->SetLazyDataProperty(UTF8("objects"), GetObjects);
 	obj->SetLazyDataProperty(UTF8("materials"), GetMaterials);
+	obj->SetAccessor(UTF8("scene"), GetScene);
 
 	Local<Object> lobj = obj->NewInstance();
 	lobj->SetInternalField(0, External::New(isolate, doc));
 	return lobj;
 }
 
-void InstallMQDocument(Local<Object> global, Isolate* isolate, MQDocument doc) {
+static void GetDocument(const Local<Name> property, const PropertyCallbackInfo<Value>& info) {
+	MQDocument doc = static_cast<MQDocument>(info.Data().As<External>()->Value());
+	info.GetReturnValue().Set(NewDocumentObject(info.GetIsolate(), doc));
+}
+
+void InstallMQDocument(Local<ObjectTemplate> global, Isolate* isolate, MQDocument doc) {
 	auto objcectConstructor = FunctionTemplate::New(isolate, MQObjectConstructor, External::New(isolate, doc));
 	objcectConstructor->SetClassName(UTF8("MQObject"));
 	InitMQObjectTemplate(isolate, objcectConstructor->InstanceTemplate());
@@ -591,8 +724,8 @@ void InstallMQDocument(Local<Object> global, Isolate* isolate, MQDocument doc) {
 	objt->SetAccessor(UTF8("name"), GetMaterialName, SetMaterialName);
 	objt->SetAccessor(UTF8("color"), GetMaterialColor, SetMaterialColor);
 
-
-	global->Set(UTF8("MQObject"), objcectConstructor->GetFunction());
-	global->Set(UTF8("MQMaterial"), materialConstructor->GetFunction());
-	global->Set(UTF8("document"), NewDocumentObject(isolate, doc));
+	global->Set(UTF8("MQObject"), objcectConstructor, PropertyAttribute::ReadOnly);
+	global->Set(UTF8("MQMaterial"), materialConstructor, PropertyAttribute::ReadOnly);
+	global->SetLazyDataProperty(UTF8("document"), GetDocument, External::New(isolate, doc));
+	//global->Set(UTF8("document"), NewDocumentObject(isolate, doc));
 }
