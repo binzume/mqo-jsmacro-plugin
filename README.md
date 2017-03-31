@@ -11,7 +11,7 @@ JavaScriptでメタセコイアのマクロを書けるようにするプラグ�
 [`JSMacro.zip`](https://github.com/binzume/mqo-jsmacro-plugin/releases/latest) を展開し，
 `Plugins/Station` ディレクトリに `JSMacro.dll` と `JSMacro.dll.core.js` を配置して下さい．
 
-DLLは64bit版です．(32ビット版は用意する予定はないですが，必要な場合はソースからビルドして下さい...)
+zipに含まれるDLLは**64bit版**です．(32ビット版は余裕があったら用意するかもしれませんが，どうしても必要な場合はソースからビルドして下さい...)
 
 ## 利用方法
 
@@ -65,7 +65,7 @@ DLLは64bit版です．(32ビット版は用意する予定はないですが，
 - object.verts.length (ReadOnly)
 - object.verts[index]
 - object.verts[index].refs (ReadOnly)
-- object.verts.append(x,y,z)
+- object.verts.append(x,y,z) or append({x:X, y:Y, z:Z})
 - object.faces.length (ReadOnly)
 - object.faces[index]
 - object.faces[index].invert()
