@@ -10,10 +10,11 @@ console.log('setname');
 n.name= obj.name + "x2";
 
 console.log('transform');
+// n.transform(MQMatrix.scaleMatrix(2,2,2));
 for(var i=0; i< n.verts.length; i++) {
 	var v = n.verts[i];
 	console.log(" point" + v);
-	n.verts[i] = [v[0] * 2, v[1] * 2, v[2] * 2];
+	n.verts[i] = [v.x * 2, v.y * 2, v.z * 2];
 }
 
 console.log('add');

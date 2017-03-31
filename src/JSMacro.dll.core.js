@@ -29,13 +29,7 @@ MQObject.prototype.transform = function(tr) {
 		}
 	} else {
 		for(let i=0; i< length; i++) {
-			const p = this.verts[i];
-			const m = tr.m;
-			this.verts[i] = [
-				m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3],
-				m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7],
-				m[8] * p[0] + m[9] * p[1] + m[10]* p[2] + m[11]
-			];
+			this.verts[i] = tr.transformV(this.verts[i]);
 		}
 	}
 };

@@ -93,8 +93,8 @@ document.objects.append(square);
 
 #### MQObject.verts
 
-- `verts[index] は [x,y,z]` 形式の値を返します
-- `verts[0] = [x,y,z]` は動作しますが `verts[0][0] = x` は変更が反映されません(faceやcolorなども同様)
+- `verts[index]` は `{x:0,y:1,z:2}` 形式の値を返します
+- `verts[0] = {x:0,y:1,z:2}` は動作しますが `verts[0].x = 0` は変更が反映されません(faceやcolorなども同様)
 - 頂点の削除は `delete verts[index];`
 
 ### MQMaterial

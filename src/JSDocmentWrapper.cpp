@@ -43,7 +43,6 @@ struct Holder {
 		ref.SetWeak<Holder<T>>(this, Holder<T>::Dispose, WeakCallbackType::kParameter);
 		ref.MarkIndependent();
 	}
-
 	static void Dispose(const v8::WeakCallbackInfo<Holder<T>>& data) {
 		if (data.GetParameter()->obj->GetUniqueID() == 0) {
 			data.GetParameter()->obj->DeleteThis();
@@ -86,14 +85,12 @@ static void GetVertex(uint32_t index, const PropertyCallbackInfo<Value>& info) {
 
 	MQPoint p = obj->GetVertex(index);
 
-	Handle<Array> vert = Array::New(isolate, 3);
-	if (vert.IsEmpty())
-		return info.GetReturnValue().Set(Handle<Array>());
+	Handle<Object> vert = Object::New(isolate);
 
+	vert->Set(UTF8("x"), Number::New(isolate, p.x));
+	vert->Set(UTF8("y"), Number::New(isolate, p.y));
+	vert->Set(UTF8("z"), Number::New(isolate, p.z));
 	vert->Set(UTF8("refs"), Integer::New(isolate, obj->GetVertexRefCount(index)));
-	vert->Set(0, Number::New(isolate, p.x));
-	vert->Set(1, Number::New(isolate, p.y));
-	vert->Set(2, Number::New(isolate, p.z));
 	info.GetReturnValue().Set(vert);
 }
 
@@ -102,12 +99,19 @@ static void SetVertex(uint32_t index, Local<Value> value, const PropertyCallback
 	Local<Object> self = info.Holder();
 	Local<Object> _obj = Local<Object>::Cast(self->Get(UTF8("_obj")));
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
-	Local<Array> coord = value.As<Array>();
 
 	MQPoint p;
-	p.x = (float)coord->Get(0).As<Number>()->Value();
-	p.y = (float)coord->Get(1).As<Number>()->Value();
-	p.z = (float)coord->Get(2).As<Number>()->Value();
+	if (value->IsArray()) {
+		Local<Array> coord = value.As<Array>();
+		p.x = (float)coord->Get(0).As<Number>()->Value();
+		p.y = (float)coord->Get(1).As<Number>()->Value();
+		p.z = (float)coord->Get(2).As<Number>()->Value();
+	} else {
+		Local<Object> coord = value.As<Object>();
+		p.x = (float)coord->Get(UTF8("x")).As<Number>()->Value();
+		p.y = (float)coord->Get(UTF8("y")).As<Number>()->Value();
+		p.z = (float)coord->Get(UTF8("z")).As<Number>()->Value();
+	}
 
 	obj->SetVertex(index, p);
 	info.GetReturnValue().Set(value);
@@ -119,7 +123,15 @@ static void AddVertex(const FunctionCallbackInfo<Value>& args) {
 	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
 
-	if (args.kArgsLength >= 3) {
+	if (args[0]->IsObject()) {
+		MQPoint p;
+		Local<Object> coord = args[0].As<Object>();
+		p.x = (float)coord->Get(UTF8("x")).As<Number>()->Value();
+		p.y = (float)coord->Get(UTF8("y")).As<Number>()->Value();
+		p.z = (float)coord->Get(UTF8("z")).As<Number>()->Value();
+		int index = obj->AddVertex(p);
+		args.GetReturnValue().Set(index);
+	} else if (args.kArgsLength >= 3) {
 		MQPoint p;
 		p.x = (float)args[0].As<Number>()->Value();
 		p.y = (float)args[1].As<Number>()->Value();
@@ -821,6 +833,7 @@ void InstallMQDocument(Local<ObjectTemplate> global, Isolate* isolate, MQDocumen
 	objt->SetAccessor(UTF8("id"), GetMaterialId);
 	objt->SetAccessor(UTF8("name"), GetMaterialName, SetMaterialName);
 	objt->SetAccessor(UTF8("color"), GetMaterialColor, SetMaterialColor);
+	objt->SetAccessor(UTF8("selected"), GetMaterialSelected, SetMaterialSelected);
 
 	global->Set(UTF8("MQObject"), objcectConstructor, PropertyAttribute::ReadOnly);
 	global->Set(UTF8("MQMaterial"), materialConstructor, PropertyAttribute::ReadOnly);
