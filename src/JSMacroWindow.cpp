@@ -1,6 +1,8 @@
 
 #include <codecvt>
 #include "JSMacroWindow.h"
+#include "MQBasePlugin.h"
+#include "MQSetting.h"
 
 JSMacroWindow::JSMacroWindow(MQWindowBase& parent, WindowCallback &callback) : MQWindow(parent), m_callback(callback) {
 	setlocale(LC_ALL, "");
@@ -8,6 +10,12 @@ JSMacroWindow::JSMacroWindow(MQWindowBase& parent, WindowCallback &callback) : M
 
 	SetTitle(L"JSMacro");
 	SetOutSpace(0.4);
+
+	// Setting
+	std::wstring scriptPath;
+	MQSetting *setting = GetPluginClass()->OpenSetting();
+	setting->Load("lastScriptPath", scriptPath);
+	GetPluginClass()->CloseSetting(setting);
 
 	MQFrame *mainFrame = CreateVerticalFrame(this);
 	mainFrame->SetVertLayout(MQWidgetBase::LAYOUT_FILL);
@@ -19,7 +27,7 @@ JSMacroWindow::JSMacroWindow(MQWindowBase& parent, WindowCallback &callback) : M
 
 	m_FilePathEdit = CreateEdit(locationFrame);
 	m_FilePathEdit->SetHorzLayout(MQWidgetBase::LAYOUT_FILL);
-	m_FilePathEdit->SetText(L"C:/tmp/test.js");
+	m_FilePathEdit->SetText(scriptPath);
 
 	MQButton *openButton = CreateButton(locationFrame, L"...");
 	openButton->AddClickEvent(this, &JSMacroWindow::OnOpenScriptClick);
@@ -69,6 +77,9 @@ BOOL JSMacroWindow::Execute(MQDocument doc) {
 		m_callback.ExecuteString(code.substr(3), doc);
 	} else {
 		m_callback.ExecuteFile(code, doc);
+		MQSetting *setting = GetPluginClass()->OpenSetting();
+		setting->Save("lastScriptPath", str);
+		GetPluginClass()->CloseSetting(setting);
 	}
 	return TRUE;
 }
