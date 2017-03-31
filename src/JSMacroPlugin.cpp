@@ -56,6 +56,11 @@ public:
 	}
 };
 
+const char* SUB_COMMAND[PRESET_SCRIPT_COUNT+1] = {"EXEC", "EXEC_P0", "EXEC_P1", "EXEC_P2", "EXEC_P3", "EXEC_P4"};
+const wchar_t* SUB_COMMAND_STR[PRESET_SCRIPT_COUNT + 1] = {
+	L"Run", L"Run 1", L"Run 2", L"Run 3", L"Run 4", L"Run 5"
+};
+
 class JSMacroPlugin : public MQStationPlugin
 {
 public:
@@ -78,9 +83,14 @@ public:
 	};
 	virtual void OnDraw(MQDocument doc, MQScene scene, int width, int height);
 	virtual void OnUpdateObjectList(MQDocument doc);
-	virtual const char *EnumSubCommand(int index) { return index == 0 ? "Run" : nullptr; };
-	virtual const wchar_t *GetSubCommandString(int index) { return index == 0 ? L"Run" : nullptr; };
-	virtual BOOL OnSubCommand(MQDocument doc, int index) { window->Execute(doc); return TRUE; };
+	virtual const char *EnumSubCommand(int index) {
+		if (index <= PRESET_SCRIPT_COUNT) {
+			return SUB_COMMAND[index];
+		}
+		return nullptr;
+	};
+	virtual const wchar_t *GetSubCommandString(int index) { return SUB_COMMAND_STR[index]; };
+	virtual BOOL OnSubCommand(MQDocument doc, int index) { window->Execute(doc, index - 1); return TRUE; };
 	void AddMessage(const std::string &message, int tag = 0) {
 		if (window) window->AddMessage(message, tag);
 	}

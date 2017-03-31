@@ -1,4 +1,6 @@
 
+#include <string>
+#include <sstream>
 #include <codecvt>
 #include "JSMacroWindow.h"
 #include "MQBasePlugin.h"
@@ -11,13 +13,11 @@ JSMacroWindow::JSMacroWindow(MQWindowBase& parent, WindowCallback &callback) : M
 	SetTitle(L"JSMacro");
 	SetOutSpace(0.4);
 
-	// Setting
-	std::wstring scriptPath;
-	MQSetting *setting = GetPluginClass()->OpenSetting();
-	setting->Load("lastScriptPath", scriptPath);
-	GetPluginClass()->CloseSetting(setting);
+	MQTab *tab = CreateTab(this);
 
-	MQFrame *mainFrame = CreateVerticalFrame(this);
+	MQFrame *mainFrame = CreateVerticalFrame(tab);
+	tab->SetTabTitle(0, L"Script");
+
 	mainFrame->SetVertLayout(MQWidgetBase::LAYOUT_FILL);
 	mainFrame->SetHintSizeRateX(40.0);
 	mainFrame->SetHintSizeRateY(30.0);
@@ -27,13 +27,15 @@ JSMacroWindow::JSMacroWindow(MQWindowBase& parent, WindowCallback &callback) : M
 
 	m_FilePathEdit = CreateEdit(locationFrame);
 	m_FilePathEdit->SetHorzLayout(MQWidgetBase::LAYOUT_FILL);
-	m_FilePathEdit->SetText(scriptPath);
+
 
 	MQButton *openButton = CreateButton(locationFrame, L"...");
 	openButton->AddClickEvent(this, &JSMacroWindow::OnOpenScriptClick);
+	openButton->SetTag(-1);
 
 	MQButton *execButton = CreateButton(locationFrame, L"Run");
 	execButton->AddClickEvent(this, &JSMacroWindow::OnExecuteClick);
+	execButton->SetTag(-1);
 
 	// console log
 	m_MessageList = CreateListBox(mainFrame);
@@ -45,6 +47,45 @@ JSMacroWindow::JSMacroWindow(MQWindowBase& parent, WindowCallback &callback) : M
 	MQButton *clearButton = CreateButton(mainFrame, L"Clear");
 	clearButton->AddClickEvent(this, &JSMacroWindow::OnClearClick);
 	this->AddHideEvent(this, &JSMacroWindow::OnHide);
+
+
+	MQFrame *presetFrame = CreateVerticalFrame(tab);
+	tab->SetTabTitle(1, L"Preset");
+	for (int i = 0; i < PRESET_SCRIPT_COUNT; i++) {
+		MQFrame *locationFrame = CreateHorizontalFrame(presetFrame);
+
+		m_PresetEdit[i] = CreateEdit(locationFrame);
+		m_PresetEdit[i]->SetHorzLayout(MQWidgetBase::LAYOUT_FILL);
+
+		MQButton *openButton = CreateButton(locationFrame, L"...");
+		openButton->AddClickEvent(this, &JSMacroWindow::OnOpenScriptClick);
+		openButton->SetTag(i);
+
+		MQButton *execButton = CreateButton(locationFrame, L"Run");
+		execButton->AddClickEvent(this, &JSMacroWindow::OnExecuteClick);
+		execButton->SetTag(i);
+		std::stringstream ss;
+		ss << "EXEC_P" << i;
+		RegisterSubCommandButton((MQStationPlugin*)(GetPluginClass()), execButton, ss.str().c_str());
+	}
+	MQButton *saveButton = CreateButton(presetFrame, L"Save");
+	saveButton->AddClickEvent(this, &JSMacroWindow::OnSavePresetClick);
+
+	// Load settings
+	std::wstring scriptPath;
+	MQSetting *setting = GetPluginClass()->OpenSetting();
+	setting->Load("lastScriptPath", scriptPath);
+	m_FilePathEdit->SetText(scriptPath);
+	for (int i = 0; i < PRESET_SCRIPT_COUNT; i++) {
+		scriptPath.clear();
+		auto path = m_PresetEdit[i]->GetText();
+		std::stringstream ss;
+		ss << "presetScriptPath_" << i;
+		setting->Load(ss.str().c_str(), scriptPath);
+		m_PresetEdit[i]->SetText(scriptPath);
+	}
+	GetPluginClass()->CloseSetting(setting);
+
 }
 
 void JSMacroWindow::AddMessage(const std::string &message, int tag) {
@@ -64,15 +105,23 @@ BOOL JSMacroWindow::OnOpenScriptClick(MQWidgetBase *sender, MQDocument doc) {
 	dialog->SetFileMustExist(true);
 	dialog->AddFilter(L"JavaScript(*.js)|*.js");
 	if (dialog->Execute()) {
-		m_FilePathEdit->SetText(dialog->GetFileName());
+		if (sender->GetTag() >= 0) {
+			m_PresetEdit[sender->GetTag()]->SetText(dialog->GetFileName());
+		} else {
+			m_FilePathEdit->SetText(dialog->GetFileName());
+		}
 	}
 	return FALSE;
 }
 
-BOOL JSMacroWindow::Execute(MQDocument doc) {
+BOOL JSMacroWindow::Execute(MQDocument doc, int preset) {
 	auto str = m_FilePathEdit->GetText();
 	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
 	std::string code = converter.to_bytes(str);
+	if (preset >= 0 && preset < PRESET_SCRIPT_COUNT) {
+		auto str = m_PresetEdit[preset]->GetText();
+		m_FilePathEdit->SetText(str);
+	}
 	if (code.find("js:") == 0) {
 		m_callback.ExecuteString(code.substr(3), doc);
 	} else {
@@ -90,11 +139,25 @@ BOOL JSMacroWindow::ExecuteProc(MQDocument doc, void *option) {
 }
 
 BOOL JSMacroWindow::OnExecuteClick(MQWidgetBase *sender, MQDocument doc) {
-	// Execute(doc);
+	if (sender->GetTag() >= 0) {
+		auto str = m_PresetEdit[sender->GetTag()]->GetText();
+		m_FilePathEdit->SetText(str);
+	}
 	MQ_StationCallback(JSMacroWindow::ExecuteProc, this);
 	return FALSE;
 }
 
+BOOL JSMacroWindow::OnSavePresetClick(MQWidgetBase * sender, MQDocument doc) {
+	MQSetting *setting = GetPluginClass()->OpenSetting();
+	for (int i = 0; i < PRESET_SCRIPT_COUNT; i++) {
+		auto path = m_PresetEdit[i]->GetText();
+		std::stringstream ss;
+		ss << "presetScriptPath_"  << i;
+		setting->Save(ss.str().c_str(), path);
+	}
+	GetPluginClass()->CloseSetting(setting);
+	return FALSE;
+}
 
 BOOL JSMacroWindow::OnHide(MQWidgetBase *sender, MQDocument doc) {
 	m_callback.OnCloseWindow(doc);
