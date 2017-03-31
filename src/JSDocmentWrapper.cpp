@@ -215,6 +215,31 @@ static void GetFace(uint32_t index, const PropertyCallbackInfo<Value>& info) {
 	info.GetReturnValue().Set(face);
 }
 
+static void SetFace(uint32_t index, Local<Value> value, const PropertyCallbackInfo<Value>& info) {
+	Isolate* isolate = info.GetIsolate();
+	Local<Object> self = info.Holder();
+	Local<Object> _obj = Local<Object>::Cast(self->Get(UTF8("_obj")));
+	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
+
+	if (obj->GetFacePointCount(index) > 0) {
+		obj->DeleteFace(index);
+	}
+
+	Local<Array> poly = value.As<Object>()->Get(UTF8("points")).As<Array>();
+	int count = poly->Length();
+	int *points = new int[count];
+	for (int i = 0; i < count; i++) {
+		points[i] = (int)poly->Get(i).As<Integer>()->Value();
+	}
+	obj->InsertFace(index, count, points);
+	delete[] points;
+	if (value.As<Object>()->Get(UTF8("material"))->IsInt32()) {
+		obj->SetFaceMaterial(index, value.As<Object>()->Get(UTF8("material")).As<Integer>()->Int32Value());
+	}
+
+	info.GetReturnValue().Set(value);
+}
+
 static void AddFace(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
 	Local<Object> self = args.Holder();
@@ -252,7 +277,7 @@ static void GetFaces(const Local<Name> property, const PropertyCallbackInfo<Valu
 
 	Local<Object> self = info.Holder();
 	auto facest = ObjectTemplate::New(isolate);
-	facest->SetIndexedPropertyHandler(GetFace, nullptr, nullptr, DeleteFace);
+	facest->SetIndexedPropertyHandler(GetFace, SetFace, nullptr, DeleteFace);
 	facest->SetAccessor(UTF8("length"), GetFaceCount);
 	facest->Set(UTF8("append"), FunctionTemplate::New(isolate, AddFace));
 	Local<Object> faces = facest->NewInstance();
@@ -359,13 +384,19 @@ static Handle<Object> MQObjectWrap(Isolate* isolate, MQObject o) {
 		->Get(UTF8("MQObject")).As<Function>()->CallAsConstructor(1, args).As<Object>();
 }
 
-static void CloneObject(const FunctionCallbackInfo<Value>& info) {
-	Isolate* isolate = info.GetIsolate();
-	MQObject obj = GetInternal<MQObject>(info);
-
+static void CloneObject(const FunctionCallbackInfo<Value>& args) {
+	Isolate* isolate = args.GetIsolate();
+	MQObject obj = GetInternal<MQObject>(args);
 	MQObject newObject = obj->Clone();
-
-	info.GetReturnValue().Set(MQObjectWrap(isolate, newObject));
+	auto wrapped = MQObjectWrap(isolate, newObject);
+	if (args[0].As<Boolean>()->Value()) {
+		Local<Value> fargs[] = { wrapped };
+		isolate->GetCurrentContext()->Global()->Get(UTF8("document")).As<Object>()
+			->Get(UTF8("objects")).As<Object>()
+			->Get(UTF8("append")).As<Function>()
+			->Call(wrapped, 1, fargs);
+	}
+	args.GetReturnValue().Set(wrapped);
 }
 
 static void InitMQObjectTemplate(Isolate* isolate, Local<ObjectTemplate> objt) {
@@ -837,6 +868,6 @@ void InstallMQDocument(Local<ObjectTemplate> global, Isolate* isolate, MQDocumen
 
 	global->Set(UTF8("MQObject"), objcectConstructor, PropertyAttribute::ReadOnly);
 	global->Set(UTF8("MQMaterial"), materialConstructor, PropertyAttribute::ReadOnly);
-	global->SetLazyDataProperty(UTF8("document"), GetDocument, External::New(isolate, doc));
+	global->SetLazyDataProperty(UTF8("document"), GetDocument, External::New(isolate, doc), PropertyAttribute::ReadOnly);
 	//global->Set(UTF8("document"), NewDocumentObject(isolate, doc));
 }
