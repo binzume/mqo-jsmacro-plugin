@@ -37,7 +37,7 @@ static std::string sjisToUtf8(const std::string &str) {
 
 template<typename T>
 struct Holder {
-	v8::Persistent<v8::Object> ref;
+	v8::UniquePersistent<v8::Object> ref;
 	T obj;
 	Holder(v8::Isolate *isolate, v8::Handle<v8::Object> target, T ptr) : ref(isolate, target), obj(ptr) {
 		ref.SetWeak<Holder<T>>(this, Holder<T>::Dispose, WeakCallbackType::kParameter);
@@ -299,6 +299,20 @@ static void SetObjectSelected(const Local<String> property, Local<Value> value, 
 	obj->SetSelected(value.As<Boolean>()->Value());
 }
 
+static void GetObjectLocked(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQObject obj = GetInternal<MQObject>(info);
+
+	info.GetReturnValue().Set(obj->GetLocking() != 0);
+}
+
+static void SetObjectLocked(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQObject obj = GetInternal<MQObject>(info);
+
+	obj->SetLocking(value.As<Boolean>()->Value());
+}
+
 static void FreezeObject(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
 	MQObject obj = GetInternal<MQObject>(args);
@@ -343,11 +357,12 @@ static void CloneObject(const FunctionCallbackInfo<Value>& info) {
 }
 
 static void InitMQObjectTemplate(Isolate* isolate, Local<ObjectTemplate> objt) {
-	objt->SetInternalFieldCount(1);
+	objt->SetInternalFieldCount(2);
 	objt->SetAccessor(UTF8("id"), GetObjectId);
 	objt->SetAccessor(UTF8("name"), GetObjectName, SetObjectName);
 	objt->SetAccessor(UTF8("visible"), GetObjectVisible, SetObjectVisible);
 	objt->SetAccessor(UTF8("selected"), GetObjectSelected, SetObjectSelected);
+	objt->SetAccessor(UTF8("locked"), GetObjectLocked, SetObjectLocked);
 	objt->Set(UTF8("clone"), FunctionTemplate::New(isolate, CloneObject));
 	objt->Set(UTF8("freeze"), FunctionTemplate::New(isolate, FreezeObject));
 	objt->Set(UTF8("compact"), FunctionTemplate::New(isolate, CompactObject));
@@ -361,9 +376,9 @@ static void MQObjectConstructor(const FunctionCallbackInfo<Value>& args) {
 	Local<Object> self = args.This();
 	if (args.kArgsLength >= 1 && args[0]->IsExternal()) {
 		self->SetInternalField(0, args[0]);
+		self->SetInternalField(1, Undefined(isolate));
 	} else {
 		MQObject obj = MQ_CreateObject();
-		self->SetInternalField(0, External::New(isolate, obj));
 		if (args.kArgsLength >= 1 && args[0]->IsString()) {
 			obj->SetName(utf8ToSjis(*String::Utf8Value(args[0])).c_str());
 		} else {
@@ -372,11 +387,9 @@ static void MQObjectConstructor(const FunctionCallbackInfo<Value>& args) {
 			doc->GetUnusedObjectName(name, sizeof(name));
 			obj->SetName(name);
 		}
+		self->SetInternalField(0, External::New(isolate, obj));
+		self->SetInternalField(1, External::New(isolate, new Holder<MQObject>(isolate, self, obj))); // delete when GC.
 	}
-
-	MQObject obj = static_cast<MQObject>(self->GetInternalField(0).As<External>()->Value());
-
-	new Holder<MQObject>(isolate, self, obj); // delete when GC.
 
 	args.GetReturnValue().Set(self);
 }
@@ -386,6 +399,10 @@ static void AddObject(const FunctionCallbackInfo<Value>& args) {
 	MQDocument doc = static_cast<MQDocument>(args.Data().As<External>()->Value());
 	Local<Object> _obj = args[0].As<Object>();
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
+	if (!_obj->GetInternalField(1)->IsUndefined()) {
+		delete static_cast<Holder<MQObject>*>(_obj->GetInternalField(1).As<External>()->Value());
+		_obj->SetInternalField(1, Undefined(isolate));
+	}
 
 	int index = doc->AddObject(obj);
 	args.GetReturnValue().Set(index);
@@ -400,6 +417,10 @@ static void DeleteObject(const FunctionCallbackInfo<Value>& args) {
 	int idx = doc->GetObjectIndex(obj);
 	if (idx >= 0) {
 		doc->DeleteObject(idx);
+		// set empty object.
+		obj = MQ_CreateObject();
+		_obj->SetInternalField(0, External::New(isolate, obj));
+		_obj->SetInternalField(1, External::New(isolate, new Holder<MQObject>(isolate, _obj, obj))); // delete when GC.
 	}
 	args.GetReturnValue().SetUndefined();
 }
@@ -444,7 +465,6 @@ static void GetMaterialName(const Local<String> property, const PropertyCallback
 static void SetMaterialName(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
 	Isolate* isolate = info.GetIsolate();
 	MQMaterial obj = GetInternal<MQMaterial>(info);
-
 	obj->SetName(utf8ToSjis(*String::Utf8Value(value)).c_str());
 }
 
@@ -480,15 +500,24 @@ static void SetMaterialColor(const Local<String> property, Local<Value> value, c
 	}
 }
 
-static Handle<Object> MQMaterialWrap(Isolate* isolate, MQMaterial m, int index) {
-	auto objt = ObjectTemplate::New(isolate);
-	objt->SetInternalFieldCount(1);
-	objt->SetAccessor(UTF8("id"), GetMaterialId);
-	objt->SetAccessor(UTF8("name"), GetMaterialName, SetMaterialName);
-	objt->SetAccessor(UTF8("color"), GetMaterialColor, SetMaterialColor);
+static void GetMaterialSelected(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQMaterial obj = GetInternal<MQMaterial>(info);
 
-	Local<Object> obj = objt->NewInstance();
-	obj->SetInternalField(0, External::New(isolate, m));
+	info.GetReturnValue().Set(obj->GetSelected() != 0);
+}
+
+static void SetMaterialSelected(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQMaterial obj = GetInternal<MQMaterial>(info);
+
+	obj->SetSelected(value.As<Boolean>()->Value());
+}
+
+static Handle<Object> MQMaterialWrap(Isolate* isolate, MQMaterial m, int index) {
+	Local<Value> args[] = { External::New(isolate, m) };
+	Local<Object> obj = isolate->GetCurrentContext()->Global()
+		->Get(UTF8("MQMaterial")).As<Function>()->CallAsConstructor(1, args).As<Object>();
 	obj->Set(UTF8("index"), Integer::New(isolate, index));
 	return obj;
 }
@@ -498,9 +527,9 @@ static void MQMaterialConstructor(const FunctionCallbackInfo<Value>& args) {
 	Local<Object> self = args.This();
 	if (args.kArgsLength >= 1 && args[0]->IsExternal()) {
 		self->SetInternalField(0, args[0]);
+		self->SetInternalField(1, Undefined(isolate));
 	} else {
 		MQMaterial obj = MQ_CreateMaterial();
-		self->SetInternalField(0, External::New(isolate, obj));
 		if (args.kArgsLength >= 1 && args[0]->IsString()) {
 			obj->SetName(utf8ToSjis(*String::Utf8Value(args[0])).c_str());
 		} else {
@@ -509,11 +538,9 @@ static void MQMaterialConstructor(const FunctionCallbackInfo<Value>& args) {
 			doc->GetUnusedMaterialName(name, sizeof(name));
 			obj->SetName(name);
 		}
+		self->SetInternalField(0, External::New(isolate, obj));
+		self->SetInternalField(1, External::New(isolate, new Holder<MQMaterial>(isolate, self, obj))); // delete when GC.
 	}
-
-	MQMaterial obj = static_cast<MQMaterial>(self->GetInternalField(0).As<External>()->Value());
-
-	new Holder<MQMaterial>(isolate, self, obj); // delete when GC.
 
 	args.GetReturnValue().Set(self);
 }
@@ -523,6 +550,10 @@ static void AddMaterial(const FunctionCallbackInfo<Value>& args) {
 	MQDocument doc = static_cast<MQDocument>(args.Data().As<External>()->Value());
 	Local<Object> _obj = args[0].As<Object>();
 	MQMaterial obj = static_cast<MQMaterial>(_obj->GetInternalField(0).As<External>()->Value());
+	if (!_obj->GetInternalField(1)->IsUndefined()) {
+		delete static_cast<Holder<MQMaterial>*>(_obj->GetInternalField(1).As<External>()->Value());
+		_obj->SetInternalField(1, Undefined(isolate));
+	}
 
 	int index = doc->AddMaterial(obj);
 	args.GetReturnValue().Set(index);
@@ -532,9 +563,21 @@ static void DeleteMaterial(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
 	MQDocument doc = static_cast<MQDocument>(args.Data().As<External>()->Value());
 	Local<Object> _obj = args[0].As<Object>();
-	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
+	MQMaterial obj = static_cast<MQMaterial>(_obj->GetInternalField(0).As<External>()->Value());
 
-	doc->DeleteMaterial(_obj->Get(UTF8("index"))->Int32Value());
+	// delete by id
+	int id = obj->GetUniqueID();
+	for (int i = 0; i < doc->GetMaterialCount(); i++) {
+		if (doc->GetMaterial(i) != nullptr && doc->GetMaterial(i)->GetUniqueID() == id) {
+			doc->DeleteMaterial(i);
+
+			// set empty object.
+			obj = MQ_CreateMaterial();
+			_obj->SetInternalField(0, External::New(isolate, obj));
+			_obj->SetInternalField(1, External::New(isolate, new Holder<MQMaterial>(isolate, _obj, obj))); // delete when GC.
+			break;
+		}
+	}
 	args.GetReturnValue().SetUndefined();
 }
 
@@ -628,6 +671,58 @@ static void SetCameraAngle(const Local<String> property, Local<Value> value, con
 	s->SetCameraAngle(p);
 }
 
+static void GetRotationCenter(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQScene s = GetInternal<MQScene>(info);
+
+	MQPoint p = s->GetRotationCenter();
+	auto obj = Object::New(isolate);
+	obj->Set(UTF8("x"), Number::New(isolate, p.x));
+	obj->Set(UTF8("y"), Number::New(isolate, p.y));
+	obj->Set(UTF8("z"), Number::New(isolate, p.z));
+
+	info.GetReturnValue().Set(obj);
+}
+
+static void SetRotationCenter(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQScene s = GetInternal<MQScene>(info);
+
+	MQPoint p;
+	p.x = (float)value.As<Object>()->Get(UTF8("x")).As<Number>()->NumberValue();
+	p.y = (float)value.As<Object>()->Get(UTF8("y")).As<Number>()->NumberValue();
+	p.z = (float)value.As<Object>()->Get(UTF8("z")).As<Number>()->NumberValue();
+	s->SetRotationCenter(p);
+}
+
+static void GetFOV(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQScene s = GetInternal<MQScene>(info);
+
+	info.GetReturnValue().Set(s->GetFOV());
+}
+
+static void SetFOV(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQScene s = GetInternal<MQScene>(info);
+
+	s->SetFOV((float)value.As<Number>()->NumberValue());
+}
+
+static void GetZoom(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQScene s = GetInternal<MQScene>(info);
+
+	info.GetReturnValue().Set(s->GetZoom());
+}
+
+static void SetZoom(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+	Isolate* isolate = info.GetIsolate();
+	MQScene s = GetInternal<MQScene>(info);
+
+	s->SetZoom((float)value.As<Number>()->NumberValue());
+}
+
 static void GetScene(const Local<Name> property, const PropertyCallbackInfo<Value>& info) {
 	Isolate* isolate = info.GetIsolate();
 	MQDocument doc = GetInternal<MQDocument>(info);
@@ -639,6 +734,9 @@ static void GetScene(const Local<Name> property, const PropertyCallbackInfo<Valu
 	objt->SetAccessor(UTF8("cameraPosition"), GetCameraPosition, SetCameraPosition);
 	objt->SetAccessor(UTF8("cameraAngle"), GetCameraAngle, SetCameraAngle);
 	objt->SetAccessor(UTF8("cameraLookAt"), GetCameraLookAt, SetCameraLookAt);
+	objt->SetAccessor(UTF8("rotationCenter"), GetRotationCenter, SetRotationCenter);
+	objt->SetAccessor(UTF8("fov"), GetFOV, SetFOV);
+	objt->SetAccessor(UTF8("zoom"), GetZoom, SetZoom);
 
 	Local<Object> s = objt->NewInstance();
 	s->SetInternalField(0, External::New(isolate, scene));
@@ -719,7 +817,7 @@ void InstallMQDocument(Local<ObjectTemplate> global, Isolate* isolate, MQDocumen
 	materialConstructor->SetClassName(UTF8("MQMaterial"));
 	// InitMQMaterialTemplate(isolate, materialConstructor->InstanceTemplate());
 	auto objt = materialConstructor->InstanceTemplate();
-	objt->SetInternalFieldCount(1);
+	objt->SetInternalFieldCount(2);
 	objt->SetAccessor(UTF8("id"), GetMaterialId);
 	objt->SetAccessor(UTF8("name"), GetMaterialName, SetMaterialName);
 	objt->SetAccessor(UTF8("color"), GetMaterialColor, SetMaterialColor);

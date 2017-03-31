@@ -3,9 +3,7 @@
 
 JavaScriptでメタセコイアのマクロを書けるようにするプラグインです．
 
-とりあえず動きますが，まだ開発中なので仕様は予告なしに変わる予定です．
-
-特に理由が無い限り標準のPythonスクリプトを使った方が良いです．．
+実験的なプラグインなので，特に理由が無い限り標準のPythonスクリプトを使って下さい．
 
 
 ## ダウンロード＆インストール
@@ -37,7 +35,7 @@ DLLは64bit版です．(32ビット版は用意する予定はないですが，
 #### 注意点
 
 - なるべく通常のArrayと同じように扱えるようにしていますが，push()/pop()などは動作しません．
-- 配列はundefinedの要素が存在する場合(削除操作の後など)があります．連続した配列にしたい場合は `compact()` メソッドを読んでください．
+- 配列はundefinedの要素が存在する場合(削除操作の後など)があります．連続した配列にしたい場合は `compact()` メソッドを呼んでください．
 
 ### MQDocument
 
@@ -50,6 +48,7 @@ DLLは64bit版です．(32ビット版は用意する予定はないですが，
 - document.materials.length マテリアル数(ReadOnly)
 - document.materials[index] MQMaterialを取得
 - document.materials.append(mat) マテリアルを追加
+- document.materials.remove(mat) マテリアルを削除
 - document.scene シーンを取得
 - document.compact()
 - document.clearSelect() (暫定実装)
@@ -159,7 +158,6 @@ setInterval(() => {
 	document.scene.cameraLookAt = originalLookAt;
 }, 10);
 ```
-\
 
 ## TODO
 
