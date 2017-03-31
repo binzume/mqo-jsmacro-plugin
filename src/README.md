@@ -12,5 +12,6 @@ T.B.D.
 
 # License
 
-T.B.D.
+Copyright 2017 Kousuke Kawahira
 
+Released under the MIT license.
