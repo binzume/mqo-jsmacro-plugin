@@ -352,9 +352,20 @@ void JSMacroPlugin::OnUpdateObjectList(MQDocument doc)
 bool JSMacroPlugin::ExecuteCallback(MQDocument doc, void *option)
 {
 	if (jsContext != nullptr && !jsContext->nextTickFun.IsEmpty()) {
+		EscapableHandleScope handleScope(isolate);
+		TryCatch trycatch;
+
 		auto fun = jsContext->nextTickFun.Get(isolate);
 		jsContext->nextTickFun.Reset();
-		fun->Call(Null(isolate), 0, nullptr);
+		auto result = fun->Call(Null(isolate), 0, nullptr);
+		if (result.IsEmpty()) {
+			Handle<Value> exception = trycatch.Exception();
+			String::Utf8Value exception_str(exception);
+			Handle<Message> message = Exception::CreateMessage(isolate, exception);
+			std::stringstream ss;
+			ss << *exception_str << " Line:" << message->GetLineNumber() << " (" << currentScriptPath << ")";
+			debug_log(ss.str(), 2);
+		}
 		return true;
 	}
 	return false;
@@ -384,7 +395,7 @@ MaybeLocal<Value> JsContext::ExecScript(const std::string &source, const std::st
 		String::Utf8Value exception_str(exception);
 		Handle<Message> message = Exception::CreateMessage(isolate, exception);
 		std::stringstream ss;
-		ss << *exception_str << " line:" << message->GetLineNumber();
+		ss << *exception_str << " Line:" << message->GetLineNumber() << " (" << maybepath << ")";
 		debug_log(ss.str(), 2);
 	} else {
 
