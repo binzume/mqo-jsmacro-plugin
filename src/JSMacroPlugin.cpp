@@ -9,6 +9,7 @@
 #include <fstream>
 #include <string>
 #include <sstream>
+#include <codecvt>
 
 #include "MQBasePlugin.h"
 #include "MQ3DLib.h"
@@ -22,7 +23,6 @@
 using namespace v8;
 
 HINSTANCE hInstance;
-
 
 //---------------------------------------------------------------------------------------------------------------------
 //  DllMain
@@ -168,7 +168,8 @@ static void LoadScript(const FunctionCallbackInfo<Value>& args) {
 		JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
 		String::Utf8Value path(args[0].As<String>());
 		debug_log("load " + plugin->GetScriptDir() + *path);
-		std::ifstream jsfile( plugin->GetScriptDir() + *path);
+		std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+		std::ifstream jsfile(converter.from_bytes(plugin->GetScriptDir() + *path));
 		std::stringstream buffer;
 		buffer << jsfile.rdbuf();
 		jsfile.close();
@@ -178,6 +179,23 @@ static void LoadScript(const FunctionCallbackInfo<Value>& args) {
 		auto ret = plugin->ExecScriptCurrentContext(buffer.str(), *path);
 		if (!ret.IsEmpty()) {
 			args.GetReturnValue().Set(ret.ToLocalChecked());
+			return;
+		}
+	}
+	args.GetReturnValue().SetUndefined();
+}
+
+static void ExecScriptString(const FunctionCallbackInfo<Value>& args) {
+	Isolate* isolate = args.GetIsolate();
+	if (args.kArgsLength >= 1) {
+		JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
+		String::Utf8Value code(args[0].As<String>());
+		String::Utf8Value path(args[1].As<String>());
+
+		auto ret = plugin->ExecScriptCurrentContext(*code, *path);
+		if (!ret.IsEmpty()) {
+			args.GetReturnValue().Set(ret.ToLocalChecked());
+			return;
 		}
 	}
 	args.GetReturnValue().SetUndefined();
@@ -192,6 +210,12 @@ static void ShowWindow(const FunctionCallbackInfo<Value>& args) {
 		plugin->window->SetVisible(true);
 	}
 	args.GetReturnValue().SetUndefined();
+}
+
+static void ScriptDir(const FunctionCallbackInfo<Value>& args) {
+	Isolate* isolate = args.GetIsolate();
+	JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
+	args.GetReturnValue().Set(UTF8(plugin->GetScriptDir().c_str()));
 }
 
 VOID CALLBACK JSMacroPlugin::TickTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime) {
@@ -232,6 +256,8 @@ static Local<ObjectTemplate> NewProcessObject(Isolate* isolate) {
 	obj->Set(UTF8("nextTick"), FunctionTemplate::New(isolate, JSMacroPlugin::SetNextTick));
 	obj->Set(UTF8("showWindow"), FunctionTemplate::New(isolate, ShowWindow));
 	obj->Set(UTF8("load"), FunctionTemplate::New(isolate, LoadScript));
+	obj->Set(UTF8("execScript"), FunctionTemplate::New(isolate, ExecScriptString));
+	obj->Set(UTF8("scriptDir"), FunctionTemplate::New(isolate, ScriptDir));
 	return obj;
 }
 
@@ -287,6 +313,7 @@ const char *JSMacroPlugin::GetPlugInName(void) {
 const char *JSMacroPlugin::EnumString(void) {
 	return "JS Macro";
 }
+
 
 //---------------------------------------------------------------------------------------------------------------------
 //    アプリケーションの初期化
@@ -398,14 +425,16 @@ MaybeLocal<Value> JsContext::ExecScript(const std::string &source, const std::st
 	TryCatch trycatch;
 
 	// Compile the source code.
-	MaybeLocal<Script> script = Script::Compile(context, UTF8(source.c_str()));
+	MaybeLocal<Script> script = Script::Compile(context, UTF8(source.c_str()), &ScriptOrigin(UTF8(maybepath.c_str())));
 	if (script.IsEmpty()) {
 		debug_log("COMPILE ERROR:", 2);
 		Handle<Value> exception = trycatch.Exception();
 		String::Utf8Value exception_str(exception);
 		Handle<Message> message = Exception::CreateMessage(isolate, exception);
 		std::stringstream ss;
-		ss << *exception_str << " Line:" << message->GetLineNumber() << " (" << maybepath << ")";
+		String::Utf8Value scriptName(message->GetScriptOrigin().ResourceName());
+		ss << *exception_str << " Line:" << message->GetLineNumber() << " (" << *scriptName << ")";
+		//ss << *exception_str << " Line:" << message->GetLineNumber() << " (" << maybepath << ")";
 		debug_log(ss.str(), 2);
 	} else {
 
@@ -415,7 +444,9 @@ MaybeLocal<Value> JsContext::ExecScript(const std::string &source, const std::st
 			String::Utf8Value exception_str(exception);
 			Handle<Message> message = Exception::CreateMessage(isolate, exception);
 			std::stringstream ss;
-			ss << *exception_str <<  " Line:" << message->GetLineNumber() << " (" << maybepath << ")";
+
+			String::Utf8Value scriptName(message->GetScriptOrigin().ResourceName());
+			ss << *exception_str <<  " Line:" << message->GetLineNumber() << " (" << *scriptName << ")";
 			debug_log(ss.str(), 2);
 			return MaybeLocal<Value>();
 		}
@@ -423,6 +454,8 @@ MaybeLocal<Value> JsContext::ExecScript(const std::string &source, const std::st
 	}
 	return MaybeLocal<Value>();
 }
+
+Local<ObjectTemplate> FileSystemTemplate(Isolate* isolate);
 
 JsContext* JSMacroPlugin::GetJsContext(MQDocument doc) {
 	if (!jsContext) {
@@ -438,7 +471,10 @@ JsContext* JSMacroPlugin::GetJsContext(MQDocument doc) {
 		if (jsfile.fail()) {
 			debug_log("Read error: " + coreJsName, 2);
 		} else {
+			auto process = isolate->GetCurrentContext()->Global()->Get(UTF8("process")).As<Object>();
+			process->Set(UTF8("unsafe_fs"), FileSystemTemplate(isolate)->NewInstance());
 			jsContext->ExecScript(buffer.str(), "core.js");
+			process->Delete(UTF8("unsafe_fs")); // core.js only
 		}
 	}
 	return jsContext;
@@ -451,7 +487,8 @@ void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
 	}
 
 	debug_log(std::string("Run: ") + fname);
-	std::ifstream jsfile(fname);
+	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+	std::ifstream jsfile(converter.from_bytes(fname));
 	std::stringstream buffer;
 	buffer << jsfile.rdbuf();
 	jsfile.close();

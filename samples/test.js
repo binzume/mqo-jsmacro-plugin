@@ -9,10 +9,13 @@ function assert(v, msg) {
 function assertEquals(expect, v, msg) {
 	assert (expect === v, "" + v +" != " + expect + "(expect) msg:" +  msg);
 }
+function assertNotNull(expect, v, msg) {
+	assert (expect != null, "" + v +" is not null msg:" +  msg);
+}
 function assertThrows(t, b, msg) {
 	let ok = false;
 	try { b(); } catch (e) { ok = (e instanceof t); }
-	assert(ok, msg);
+	assert(ok, t.name + " not throws. "+ msg);
 }
 function test(name, b) {
 	tests++;
@@ -33,10 +36,10 @@ assertEquals("function", typeof MQMatrix); // .core.js
 test("MQDocument", () => {
 	document.compact();
 	document.clearSelect();
-	assert(document.objects != null);
-	assert(document.materials != null);
-	assert(document.scene != null);
-	assert(document.scene != null);
+	assertNotNull(document.objects);
+	assertNotNull(document.materials);
+	assertNotNull(document.scene);
+	assertNotNull(document.scene);
 
 	{
 		// triangulate
@@ -159,7 +162,7 @@ test("MQMaterial", () => {
 	}
 	{
 		let idx = document.materials.append( new MQMaterial("test") );
-		assert(document.materials[idx].name == "test", "append");
+		assertEquals("test", document.materials[idx].name, "append");
 
 		document.materials.remove(idx);
 		assertEquals(undefined, document.materials[idx], "remove");
@@ -179,13 +182,13 @@ test("MQScene", () => {
 	assertEquals("number", typeof document.scene.cameraPosition.x);
 	assertEquals("number", typeof document.scene.cameraPosition.y);
 	assertEquals("number", typeof document.scene.cameraPosition.z);
-	assert(document.scene.cameraLookAt.x != null);
-	assert(document.scene.cameraLookAt.y != null);
-	assert(document.scene.cameraLookAt.z != null);
-	assert(document.scene.cameraAngle.head != null);
-	assert(document.scene.rotationCenter.x != null);
-	assert(document.scene.zoom != null);
-	assert(document.scene.fov != null);
+	assertNotNull(document.scene.cameraLookAt.x);
+	assertNotNull(document.scene.cameraLookAt.y);
+	assertNotNull(document.scene.cameraLookAt.z);
+	assertNotNull(document.scene.cameraAngle.head);
+	assertNotNull(document.scene.rotationCenter.x);
+	assertNotNull(document.scene.zoom);
+	assertNotNull(document.scene.fov);
 });
 
 console.log("ok. "+ success + "/" + tests + " tests.");
