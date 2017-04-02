@@ -44,7 +44,7 @@ class JsContext {
 	Local<Context> context;
 	Context::Scope context_scope;
 public:
-	v8::Persistent<Function> nextTickFun;
+	v8::UniquePersistent<Function> nextTickFun;
 	UINT_PTR tickTimerId;
 	JsContext(Isolate *_isolate, MQDocument doc) : isolate(_isolate),  isolate_scope(_isolate), handle_scope(_isolate),
 		context(CreateContext(_isolate, doc)), context_scope(context) {}

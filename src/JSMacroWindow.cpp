@@ -41,7 +41,7 @@ JSMacroWindow::JSMacroWindow(MQWindowBase& parent, WindowCallback &callback) : M
 	m_MessageList = CreateListBox(mainFrame);
 	m_MessageList->SetHorzLayout(MQWidgetBase::LAYOUT_FILL);
 	m_MessageList->SetVertLayout(MQWidgetBase::LAYOUT_FILL);
-	m_MessageList->SetLineHeightRate(0.8);
+	m_MessageList->SetLineHeightRate(0.9);
 	m_MessageList->AddDrawItemEvent(this, &JSMacroWindow::onDrawListItem);
 
 	MQButton *clearButton = CreateButton(mainFrame, L"Clear");
