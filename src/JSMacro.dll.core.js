@@ -99,3 +99,33 @@ MQMatrix.multiply = function(m1, m2) {
 	return result;
 };
 
+
+var module = (function(fs){
+	let modules = {};
+	modules['fs'] = {exports: fs};
+	return {
+		require: function(name) {
+			if (!modules[name]) {
+				console.log("load: "+name);
+				let script = fs.readFile(process.scriptDir() + "/" + name);
+				let mod = {
+					id: name,
+					filename: name,
+					exports: {},
+					require: module.require,
+					loaded: true
+				};
+				let init = process.execScript("(function(exports, require, module, __filename){" + script + "\n})", name);
+				init(mod.exports, mod.require, mod, name);
+				modules[name] = mod;
+			}
+			return modules[name];
+		},
+		include: function(name) {
+			console.log("load: "+name);
+			let script = fs.readFile(process.scriptDir() + "/" + name);
+			return process.execScript(script, name);
+		}
+	};
+})(process.unsafe_fs); // process.unsafe_fs : only core.js.
+var require = module.require;
