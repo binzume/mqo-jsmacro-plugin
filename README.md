@@ -52,8 +52,11 @@ zipに含まれるDLLは**64bit版**です．(32ビット版は余裕があっ�
 - document.materials.remove(mat) マテリアルを削除
 - document.scene シーンを取得
 - document.compact()
-- document.clearSelect() (暫定実装)
-- document.getSelectedVertexes() (暫定実装)
+- document.clearSelect()
+- document.isVertexSelected(objIndex, vertIndex)
+- document.setVertexSelected(objIndex, vertIndex, bool)
+- document.isFaceSelected(objIndex, faceIndex)
+- document.setFaceSelected(objIndex, faceIndex, bool)
 
 ### MQObject
 
