@@ -43,9 +43,6 @@ function cube(obj, size, mat, tr) {
 }
 
 
-var sky = new MQMaterial("game_sky");
-sky.color = {r:0.0, g:1.0, b:1.0};
-var skyIndex = document.materials.append(sky);
 
 var ground = new MQMaterial("game_ground");
 ground.color = {r:0.3, g:0.3, b:0.35};
@@ -62,7 +59,6 @@ var carIndex = document.materials.append(car);
 var field = new MQObject("game_field");
 document.objects.append(field);
 
-cube(field, 5000, skyIndex, MQMatrix.scaleMatrix(1,1,-1)); // Reverse
 planeXZ(field, 1000, groundIndex);
 
 var buildings = [

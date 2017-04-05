@@ -151,7 +151,8 @@ document.objects[0].transform(MQMatrix.rotateMatrix(1,0,0, 15));
 
 - console.log("message") メッセージをログに出力
 - setInterval(), setTimeout() タイマー(暫定仕様なので利用は非推奨)
-- process.load(scriptPath) 別スクリプトの読み込み＆実行(暫定仕様なので利用は非推奨)
+- module.include(scriptPath) 別スクリプトの読み込み＆実行(仮実装)
+- module.require(scriptPath) CommonJS形式のモジュール読み込み(仮実装)
 
 カメラを回す例： (別のスクリプトを実行するまで停止しません)
 
@@ -167,4 +168,5 @@ setInterval(() => {
 
 - スクリプトからアクセス出来る属性を増やす
 - メニュー操作自動化
+- ファイルアクセス
 
