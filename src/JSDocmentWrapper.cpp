@@ -263,8 +263,8 @@ static void AddFace(const FunctionCallbackInfo<Value>& args) {
 		}
 		int index = obj->AddFace(count, points);
 		delete[] points;
-		if (args.kArgsLength >= 2) {
-			obj->SetFaceMaterial(index, args[1].As<Integer>()->Int32Value());
+		if (args[1]->IsInt32()) {
+			obj->SetFaceMaterial(index, args[1]->Int32Value());
 		}
 		args.GetReturnValue().Set(index);
 	}

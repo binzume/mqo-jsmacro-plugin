@@ -102,7 +102,7 @@ MQMatrix.multiply = function(m1, m2) {
 
 var module = (function(fs){
 	let modules = {};
-	modules['fs'] = {exports: fs};
+	// modules['fs'] = {exports: fs, loaded: true};
 	return {
 		require: function(name) {
 			if (!modules[name]) {
@@ -119,7 +119,7 @@ var module = (function(fs){
 				init(mod.exports, mod.require, mod, name);
 				modules[name] = mod;
 			}
-			return modules[name];
+			return modules[name].exports;
 		},
 		include: function(name) {
 			console.log("load: "+name);
