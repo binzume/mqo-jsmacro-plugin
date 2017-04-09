@@ -3,18 +3,42 @@
 // csg.js : https://evanw.github.io/csg.js/
 module.include("./csg.js");
 
+var epsilon = 1e-8;
+
 function findObjectByName(name) {
 	return document.objects.find((o)=>{return o && o.name == name;});
 }
 
-function toCGSPolygons(obj) {
-	return obj.faces.map((f) => {
-		let v1 = new CSG.Vector(obj.verts[f.points[1]]).minus(obj.verts[f.points[0]]);
-		let v2 = new CSG.Vector(obj.verts[f.points[2]]).minus(obj.verts[f.points[0]]);
-		let n = v1.cross(v2).unit();
-		let vs = f.points.map((i) => { return new CSG.Vertex(obj.verts[i], n); });
-		return new CSG.Polygon(vs.reverse(), [f,obj]);
+function isConvexPolygon(points, n) {
+return false;
+	return points.every( (p) => {
+		let t = n.dot(p.minus(points[0]));
+		return t > -CSG.Plane.EPSILON/10 && t < CSG.Plane.EPSILON/10;
 	});
+}
+
+function toCGSPolygons(obj) {
+	return obj.faces.reduce((acc, f) => {
+		if (!f || f.points.length < 3) return acc;
+		let points = f.points.map( (i) => { return new CSG.Vector(obj.verts[i]) } );
+		let v1 = points[1].minus(points[0]);
+		let v2 = points[2].minus(points[0]);
+		let n = v1.cross(v2).unit();
+		if (isConvexPolygon(points, n)) {
+			let vs = points.map((p) => { return new CSG.Vertex(p, n); });
+			acc.push(new CSG.Polygon(vs.reverse(), [f,obj]));
+		} else {
+			let trpoints = document.triangulate(points).map( (i) => {return points[i]} );
+			for (let i = 0; i < trpoints.length / 3; i++) {
+				let v1 = trpoints[i*3+1].minus(trpoints[i*3]);
+				let v2 = trpoints[i*3+2].minus(trpoints[i*3]);
+				let n = v1.cross(v2).unit();
+				let vs = trpoints.slice(i*3, i*3+3).map((p) => { return new CSG.Vertex(p, n); });
+				acc.push(new CSG.Polygon(vs.reverse(), [f,obj]));
+			}
+		}
+		return acc;
+	}, []);
 }
 
 function fromCSGPolygons(obj, polygons) {
@@ -25,26 +49,28 @@ function fromCSGPolygons(obj, polygons) {
 }
 
 function veq(v1, v2) {
-	return v1.pos.minus(v2.pos).length() < 0.0000001;
+	return v1.pos.minus(v2.pos).length() < epsilon;
 }
 
 function samev(v0, v1, v2) {
-	return v1.pos.minus(v0.pos).unit().dot( v2.pos.minus(v0.pos).unit() ) > 0.99999999; // TODO eps
+	let v01 = v1.pos.minus(v0.pos);
+	let v02 = v2.pos.minus(v0.pos);
+	return v01.dot(v02) > v01.length() * v02.length()  - epsilon;
 }
 
 function overwrap(a1, a2, b1, b2) {
 	let a1a2 = a2.pos.minus(a1.pos);
 	let b1b2 = b2.pos.minus(b1.pos);
-	if (a1a2.dot( b1b2 ) > a1a2.length()*b1b2.length() - 0.00000001) {
+	if (a1a2.dot( b1b2 ) > a1a2.length()*b1b2.length() - epsilon) {
 		let a1b1 = b1.pos.minus(a1.pos);
-		if (a1b1.length() < a1a2.length() - 0.00000001) {
-			if (a1a2.dot(a1b1) > a1a2.length()*a1b1.length() - 0.00000001) {
+		if (a1b1.length() < a1a2.length() - epsilon) {
+			if (a1a2.dot(a1b1) > a1a2.length()*a1b1.length() - epsilon) {
 				return true;
 			}
 		}
 		let b1a1 = a1.pos.minus(b1.pos);
-		if (b1a1.length() < b1b2.length() - 0.0000001) {
-			if (b1b2.dot(b1a1) > b1b2.length()*b1a1.length() - 0.00000001) {
+		if (b1a1.length() < b1b2.length() - epsilon) {
+			if (b1b2.dot(b1a1) > b1b2.length()*b1a1.length() - epsilon) {
 				return true;
 			}
 		}
@@ -72,6 +98,7 @@ function tryMerge(p1, p2) {
 						}
 					}
 				} while(f);
+				if (vv.length < 3) return null;
 				return new CSG.Polygon(vv, p1.shared);
 			}
 		}
@@ -96,6 +123,7 @@ function mergePolygons(polygons) {
 				if (!fs[i]) continue;
 				for (var j=i+1; j<fs.length; j++) {
 					if (!fs[j]) continue;
+					if (fs[i].vertices.length < 3) continue;
 					var m = tryMerge(fs[i], fs[j]);
 					if (m) {
 						delete fs[j];
