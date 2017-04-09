@@ -412,6 +412,20 @@ static void MergeObject(const FunctionCallbackInfo<Value>& args) {
 	obj->Merge(src);
 }
 
+static void GetVertexIndexFromId(const FunctionCallbackInfo<Value>& args) {
+	Isolate* isolate = args.GetIsolate();
+	MQObject obj = GetInternal<MQObject>(args);
+
+	args.GetReturnValue().Set(obj->GetVertexIndexFromUniqueID(args[0]->Int32Value()));
+}
+
+static void GetFaceIndexFromId(const FunctionCallbackInfo<Value>& args) {
+	Isolate* isolate = args.GetIsolate();
+	MQObject obj = GetInternal<MQObject>(args);
+
+	args.GetReturnValue().Set(obj->GetFaceIndexFromUniqueID(args[0]->Int32Value()));
+}
+
 static Handle<Object> MQObjectWrap(Isolate* isolate, MQObject o) {
 	Local<Value> args[] = { External::New(isolate, o) };
 	return isolate->GetCurrentContext()->Global()
@@ -446,6 +460,8 @@ static void InitMQObjectTemplate(Isolate* isolate, Local<ObjectTemplate> objt) {
 	objt->Set(UTF8("freeze"), FunctionTemplate::New(isolate, FreezeObject));
 	objt->Set(UTF8("compact"), FunctionTemplate::New(isolate, CompactObject));
 	objt->Set(UTF8("merge"), FunctionTemplate::New(isolate, MergeObject));
+	objt->Set(UTF8("getVertexIndexById"), FunctionTemplate::New(isolate, GetVertexIndexFromId));
+	objt->Set(UTF8("getFaceIndexById"), FunctionTemplate::New(isolate, GetFaceIndexFromId));
 	objt->SetLazyDataProperty(UTF8("verts"), GetVerts);
 	objt->SetLazyDataProperty(UTF8("faces"), GetFaces);
 }
