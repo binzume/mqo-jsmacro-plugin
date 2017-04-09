@@ -243,6 +243,10 @@ void JSMacroPlugin::SetNextTick(const FunctionCallbackInfo<Value>& args) {
 	args.GetReturnValue().SetUndefined();
 }
 
+void InstallMQDocument(Local<ObjectTemplate> global, Isolate* isolate, MQDocument doc);
+Local<ObjectTemplate> DialogTemplate(Isolate* isolate);
+
+
 static Local<ObjectTemplate> NewProcessObject(Isolate* isolate) {
 	auto obj = ObjectTemplate::New(isolate);
 
@@ -251,6 +255,7 @@ static Local<ObjectTemplate> NewProcessObject(Isolate* isolate) {
 	fileObj->Set(String::NewFromUtf8(isolate, "write", NewStringType::kNormal).ToLocalChecked(),
 		FunctionTemplate::New(isolate, WriteFile, selfRef));
 
+	obj->Set(UTF8("version"), UTF8("v0.1.0"), PropertyAttribute::ReadOnly);
 	obj->Set(UTF8("stdout"), fileObj);
 	obj->Set(UTF8("stderr"), fileObj);
 	obj->Set(UTF8("nextTick"), FunctionTemplate::New(isolate, JSMacroPlugin::SetNextTick));
@@ -258,10 +263,9 @@ static Local<ObjectTemplate> NewProcessObject(Isolate* isolate) {
 	obj->Set(UTF8("load"), FunctionTemplate::New(isolate, LoadScript));
 	obj->Set(UTF8("execScript"), FunctionTemplate::New(isolate, ExecScriptString));
 	obj->Set(UTF8("scriptDir"), FunctionTemplate::New(isolate, ScriptDir));
+	obj->Set(UTF8("_dialog"), DialogTemplate(isolate));
 	return obj;
 }
-
-void InstallMQDocument(Local<ObjectTemplate> global, Isolate* isolate, MQDocument doc);
 
 static Local<Context> CreateContext(Isolate *isolate, MQDocument doc) {
 
