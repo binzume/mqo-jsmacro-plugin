@@ -22,6 +22,49 @@ using namespace v8;
 
 Local<ObjectTemplate> NewFile(Isolate* isolate, const std::string &path, bool writable);
 
+class Dialog : public MQDialog {
+public:
+	uint64_t button;
+	Dialog() : MQDialog(MQWindow::GetMainWindow()), button(-1) {
+	}
+
+	BOOL OnClick(MQWidgetBase *sender, MQDocument doc) {
+		button = sender->GetTag();
+		Close();
+		return TRUE;
+	}
+};
+
+static void UserDialog(const FunctionCallbackInfo<Value>& args) {
+	Isolate* isolate = args.GetIsolate();
+
+	auto dialog = new Dialog();
+	Local<Object> params = args[0].As<Object>();
+	Local<Array> buttons = args[1].As<Array>();
+
+	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+
+	Local<String> title = params->Get(UTF8("title")).As<String>();
+	dialog->SetTitle(converter.from_bytes(*String::Utf8Value(title)));
+
+
+	int buttonCount = buttons->Length();
+	for (int i=0; i<buttonCount; i++) {
+		Local<String> name = buttons->Get(i).As<String>();
+		MQButton *b = dialog->CreateButton(dialog, converter.from_bytes(*String::Utf8Value(name)));
+		b->AddClickEvent(dialog, &Dialog::OnClick);
+		b->SetTag(i);
+		dialog->AddChild(b);
+	}
+
+	if (dialog->Execute()) {
+		args.GetReturnValue().Set((int)dialog->button);
+	} else {
+		args.GetReturnValue().SetNull();
+	}
+	delete dialog;
+}
+
 
 static void FileDialog(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
@@ -88,6 +131,7 @@ static void AlertDialog(const FunctionCallbackInfo<Value>& args) {
 
 Local<ObjectTemplate> DialogTemplate(Isolate* isolate) {
 	auto fs = ObjectTemplate::New(isolate);
+	fs->Set(UTF8("dialog"), FunctionTemplate::New(isolate, UserDialog));
 	fs->Set(UTF8("fileDialog"), FunctionTemplate::New(isolate, FileDialog));
 	fs->Set(UTF8("folderDialog"), FunctionTemplate::New(isolate, FolderDialog));
 	fs->Set(UTF8("alertDialog"), FunctionTemplate::New(isolate, AlertDialog));

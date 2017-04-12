@@ -4,6 +4,8 @@ let console = {
 	"log" : function(v) { process.stdout.write(v); }
 };
 
+let alert = process._dialog.alertDialog; // alert(message);
+
 function setTimeout(f, timeout) {
 	let args = arguments.length > 2 ? [arguments[2]] : [];
 	var wf = function(){
