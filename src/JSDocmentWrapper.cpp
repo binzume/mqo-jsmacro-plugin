@@ -83,6 +83,23 @@ static void GetVertCount(const Local<String> property, const PropertyCallbackInf
 	info.GetReturnValue().Set(obj->GetVertexCount());
 }
 
+static void GetVertFaces(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
+	Isolate* isolate = info.GetIsolate();
+	Local<Object> self = info.Holder();
+	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
+	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
+	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+
+	std::vector<int> facearray(obj->GetVertexRelatedFaces(index, nullptr));
+	obj->GetVertexRelatedFaces(index, &facearray[0]);
+
+	Handle<Array> result = Array::New(isolate, (int)facearray.size());
+	for (int i = 0; i < facearray.size(); i++) {
+		result->Set(i, Integer::New(isolate, facearray[i]));
+	}
+	info.GetReturnValue().Set(result);
+}
+
 static void GetVertex(uint32_t index, const PropertyCallbackInfo<Value>& info) {
 	Isolate* isolate = info.GetIsolate();
 	Local<Object> self = info.Holder();
@@ -91,13 +108,18 @@ static void GetVertex(uint32_t index, const PropertyCallbackInfo<Value>& info) {
 
 	MQPoint p = obj->GetVertex(index);
 
-	Handle<Object> vert = Object::New(isolate);
+	auto vertt = ObjectTemplate::New(isolate);
+	vertt->Set(UTF8("id"), Integer::New(isolate, obj->GetFaceUniqueID(index)), PropertyAttribute::ReadOnly);
+	vertt->SetAccessor(UTF8("ref_faces"), GetVertFaces);
+	vertt->Set(UTF8("index"), Integer::New(isolate, index), PropertyAttribute::ReadOnly);
+	vertt->Set(UTF8("refs"), Integer::New(isolate, obj->GetVertexRefCount(index)));
 
+	Handle<Object> vert = vertt->NewInstance();
+	vert->Set(UTF8("_obj"), _obj);
 	vert->Set(UTF8("x"), Number::New(isolate, p.x));
 	vert->Set(UTF8("y"), Number::New(isolate, p.y));
 	vert->Set(UTF8("z"), Number::New(isolate, p.z));
-	vert->Set(UTF8("id"), Integer::New(isolate, obj->GetVertexUniqueID(index)));
-	vert->Set(UTF8("refs"), Integer::New(isolate, obj->GetVertexRefCount(index)));
+
 	info.GetReturnValue().Set(vert);
 }
 
@@ -202,6 +224,43 @@ static void SetFaceVisible(const Local<String> property, Local<Value> value, con
 	obj->SetFaceVisible(index, value->BooleanValue());
 }
 
+static void GetFaceUV(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
+	Isolate* isolate = info.GetIsolate();
+	Local<Object> self = info.Holder();
+	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
+	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
+	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+
+	std::vector<MQCoordinate> uvarray(obj->GetFacePointCount(index));
+	obj->GetFaceCoordinateArray(index, &uvarray[0]);
+
+	Handle<Array> result = Array::New(isolate, (int)uvarray.size());
+	for (int i = 0; i < uvarray.size(); i++) {
+		auto uv = Object::New(isolate);
+		uv->Set(UTF8("u"), Number::New(isolate, uvarray[i].u));
+		uv->Set(UTF8("v"), Number::New(isolate, uvarray[i].v));
+		result->Set(i, uv);
+	}
+	info.GetReturnValue().Set(result);
+}
+
+static void SetFaceUV(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+	Isolate* isolate = info.GetIsolate();
+	Local<Object> self = info.Holder();
+	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
+	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
+	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+
+	Handle<Array> array = value.As<Array>();
+	std::vector<MQCoordinate> uvarray(obj->GetFacePointCount(index));
+	for (int i = 0; i < uvarray.size(); i++) {
+		auto uv = array->Get(i).As<Object>();
+		uvarray[i].u = (float)uv->Get(UTF8("u"))->NumberValue();
+		uvarray[i].v = (float)uv->Get(UTF8("v"))->NumberValue();
+	}
+	obj->SetFaceCoordinateArray(index, &uvarray[0]);
+}
+
 static void GetFaceMaterial(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
 	Isolate* isolate = info.GetIsolate();
 	Local<Object> self = info.Holder();
@@ -245,10 +304,11 @@ static void GetFace(uint32_t index, const PropertyCallbackInfo<Value>& info) {
 
 	auto facet = ObjectTemplate::New(isolate);
 	facet->Set(UTF8("id"), Integer::New(isolate, obj->GetFaceUniqueID(index)), PropertyAttribute::ReadOnly);
-	facet->Set(UTF8("index"), Integer::New(isolate, index), PropertyAttribute::ReadOnly);
 	facet->SetAccessor(UTF8("visible"), GetFaceVisible, SetFaceVisible);
 	facet->SetAccessor(UTF8("material"), GetFaceMaterial, SetFaceMaterial);
+	facet->SetAccessor(UTF8("uv"), GetFaceUV, SetFaceUV);
 	facet->Set(UTF8("invert"), FunctionTemplate::New(isolate, InvertFace));
+	facet->Set(UTF8("index"), Integer::New(isolate, index), PropertyAttribute::ReadOnly);
 	auto face = facet->NewInstance();
 	face->Set(UTF8("_obj"), _obj);
 	int *points = new int[count];
