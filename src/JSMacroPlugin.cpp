@@ -140,7 +140,6 @@ void debug_log(const std::string s, int tag = 1) {
 //---------------------------------------------------------------------------------------------------------------------
 
 static void WriteFile(const v8::FunctionCallbackInfo<v8::Value>& args) {
-	std::ofstream &f = *(std::ofstream*)args.Data().As<External>()->Value();
 	std::stringstream ss;
 	bool first = true;
 	for (int i = 0; i < args.Length(); i++) {
@@ -154,12 +153,9 @@ static void WriteFile(const v8::FunctionCallbackInfo<v8::Value>& args) {
 		v8::String::Utf8Value str(args[i]);
 		ss << (*str ? *str : "[NOT_STRING]");
 	}
-	f << ss.str() << std::endl;
 
 	JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
 	plugin->AddMessage(ss.str(), 0);
-
-	f.flush();
 }
 
 static void LoadScript(const FunctionCallbackInfo<Value>& args) {
@@ -250,10 +246,9 @@ Local<ObjectTemplate> DialogTemplate(Isolate* isolate);
 static Local<ObjectTemplate> NewProcessObject(Isolate* isolate) {
 	auto obj = ObjectTemplate::New(isolate);
 
-	Handle<External> selfRef = External::New(isolate, (void*)(new std::ofstream("C:/tmp/console.log.txt", std::ios::app)));
 	auto fileObj = ObjectTemplate::New(isolate);
 	fileObj->Set(String::NewFromUtf8(isolate, "write", NewStringType::kNormal).ToLocalChecked(),
-		FunctionTemplate::New(isolate, WriteFile, selfRef));
+		FunctionTemplate::New(isolate, WriteFile));
 
 	obj->Set(UTF8("version"), UTF8("v0.1.0"), PropertyAttribute::ReadOnly);
 	obj->Set(UTF8("stdout"), fileObj);
