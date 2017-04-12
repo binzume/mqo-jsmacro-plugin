@@ -31,16 +31,17 @@ static void FileDialog(const FunctionCallbackInfo<Value>& args) {
 		return;
 	}
 	String::Utf8Value path(args[0].As<String>());
+	bool save = args[1]->BooleanValue();
 
 	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
 	std::wstring filter = converter.from_bytes(*path);
 
 	auto dialog = new MQOpenFileDialog(MQWindow::GetMainWindow());
-	// dialog->SetFileMustExist(true);
+	dialog->SetFileMustExist(!save);
 	dialog->AddFilter(filter);
 	if (dialog->Execute()) {
 		std::wstring path = dialog->GetFileName();
-		args.GetReturnValue().Set(NewFile(isolate, converter.to_bytes(path), true)->NewInstance());
+		args.GetReturnValue().Set(NewFile(isolate, converter.to_bytes(path), save)->NewInstance());
 	} else {
 		args.GetReturnValue().SetNull();
 	}

@@ -132,8 +132,27 @@ static void WriteFile(const FunctionCallbackInfo<Value>& args) {
 	args.GetReturnValue().Set(data.length());
 }
 
+
+static void OpenFile(const FunctionCallbackInfo<Value>& args) {
+	Isolate* isolate = args.GetIsolate();
+
+	if (!args[0]->IsString()) {
+		isolate->ThrowException(Exception::TypeError(UTF8("invalid path")));
+		return;
+	}
+	String::Utf8Value path(args[0].As<String>());
+
+	bool write = false;
+	if (args[2].As<Object>()->Get(UTF8("flag"))->Equals(UTF8("w"))) {
+		write = true;
+	}
+
+	args.GetReturnValue().Set(NewFile(isolate, *path, write)->NewInstance());
+}
+
 Local<ObjectTemplate> FileSystemTemplate(Isolate* isolate) {
 	auto fs = ObjectTemplate::New(isolate);
+	fs->Set(UTF8("open"), FunctionTemplate::New(isolate, OpenFile));
 	fs->Set(UTF8("readFile"), FunctionTemplate::New(isolate, ReadFile));
 	fs->Set(UTF8("writeFile"), FunctionTemplate::New(isolate, WriteFile));
 	return fs;
