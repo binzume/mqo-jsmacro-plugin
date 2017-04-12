@@ -182,12 +182,52 @@ static void GetFaceCount(const Local<String> property, const PropertyCallbackInf
 	info.GetReturnValue().Set(obj->GetFaceCount());
 }
 
+static void GetFaceVisible(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
+	Isolate* isolate = info.GetIsolate();
+	Local<Object> self = info.Holder();
+	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
+	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
+	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+
+	info.GetReturnValue().Set(obj->GetFaceVisible(index) != 0);
+}
+
+static void SetFaceVisible(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+	Isolate* isolate = info.GetIsolate();
+	Local<Object> self = info.Holder();
+	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
+	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
+	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+
+	obj->SetFaceVisible(index, value->BooleanValue());
+}
+
+static void GetFaceMaterial(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
+	Isolate* isolate = info.GetIsolate();
+	Local<Object> self = info.Holder();
+	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
+	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
+	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+
+	info.GetReturnValue().Set(obj->GetFaceMaterial(index));
+}
+
+static void SetFaceMaterial(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
+	Isolate* isolate = info.GetIsolate();
+	Local<Object> self = info.Holder();
+	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
+	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
+	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+
+	obj->SetFaceMaterial(index, value->Int32Value());
+}
+
 static void InvertFace(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
 	Local<Object> self = args.Holder();
 	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
-	uint32_t index = self->Get(UTF8("index")).As<Integer>()->Uint32Value();
+	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
 	obj->InvertFace(index);
 }
 
@@ -203,9 +243,14 @@ static void GetFace(uint32_t index, const PropertyCallbackInfo<Value>& info) {
 		return;
 	}
 
-	auto face = Object::New(isolate);
+	auto facet = ObjectTemplate::New(isolate);
+	facet->Set(UTF8("id"), Integer::New(isolate, obj->GetFaceUniqueID(index)), PropertyAttribute::ReadOnly);
+	facet->Set(UTF8("index"), Integer::New(isolate, index), PropertyAttribute::ReadOnly);
+	facet->SetAccessor(UTF8("visible"), GetFaceVisible, SetFaceVisible);
+	facet->SetAccessor(UTF8("material"), GetFaceMaterial, SetFaceMaterial);
+	facet->Set(UTF8("invert"), FunctionTemplate::New(isolate, InvertFace));
+	auto face = facet->NewInstance();
 	face->Set(UTF8("_obj"), _obj);
-	face->Set(UTF8("index"), Integer::New(isolate, index));
 	int *points = new int[count];
 	obj->GetFacePointArray(index, points);
 
@@ -216,9 +261,6 @@ static void GetFace(uint32_t index, const PropertyCallbackInfo<Value>& info) {
 	delete[] points;
 
 	face->Set(UTF8("points"), array);
-	face->Set(UTF8("material"), Integer::New(isolate, obj->GetFaceMaterial(index)));
-	face->Set(UTF8("invert"), Function::New(isolate, InvertFace));
-	face->Set(UTF8("id"), Integer::New(isolate, obj->GetFaceUniqueID(index)));
 
 	info.GetReturnValue().Set(face);
 }
