@@ -26,12 +26,15 @@ function test(name, b) {
 	success ++;
 }
 
-assertEquals("object", typeof document);
-assertEquals("object", typeof process);
-assertEquals("function", typeof MQMaterial);
-assertEquals("function", typeof MQMaterial);
-
-assertEquals("function", typeof MQMatrix); // .core.js
+test("Core", () => {
+	assertEquals("object", typeof document);
+	assertEquals("object", typeof process);
+	assertEquals("string", typeof process.version);
+	assertEquals("function", typeof MQMaterial);
+	assertEquals("function", typeof MQMaterial);
+	assertEquals("function", typeof MQMatrix); // .core.js
+	console.log(" Version: " + process.version);
+});
 
 test("MQDocument", () => {
 	document.compact();
@@ -98,7 +101,7 @@ test("MQObject", () => {
 		assertEquals(undefined, document.objects[idx], "remove");
 	}
 	{
-		assertThrows(TypeError, ()=>{ document.objects.remove(new MQMaterial())});
+		assertThrows(TypeError, ()=>{ document.objects.remove(new MQMaterial()) });
 		assertThrows(TypeError, ()=>{ document.objects.remove({}) });
 		assertThrows(TypeError, ()=>{ document.objects.remove("hoge") });
 		assertThrows(TypeError, ()=>{ document.objects.append("hoge") });
@@ -126,6 +129,13 @@ test("MQObject verts/faces", () => {
 		assertEquals(1, obj.faces[0].points[1]);
 		assertEquals(0, obj.faces[0].material);
 		assertEquals(2, obj.faces[1].points[1]);
+		assertEquals(0, obj.faces[0].index);
+		assertEquals(3, obj.faces[0].uv.length);
+		assertEquals("number", typeof obj.faces[0].uv[0].u);
+		assertEquals("number", typeof obj.faces[0].uv[0].v);
+		assertEquals(true, obj.faces[1].visible);
+		obj.faces[1].visible = false;
+		assertEquals(false, obj.faces[1].visible);
 		assertEquals("number", typeof obj.faces[0].id);
 		obj.faces[0] = {points: [0,2,1], material: 0};
 		assertEquals(2, obj.faces[0].points[1]);
@@ -192,3 +202,6 @@ test("MQScene", () => {
 });
 
 console.log("ok. "+ success + "/" + tests + " tests.");
+if (success != tests) {
+	alert("failed:"+(tests-success));
+}

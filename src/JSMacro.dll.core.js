@@ -103,7 +103,18 @@ MQMatrix.multiply = function(m1, m2) {
 
 
 var module = (function(fs){
+
+	// TODO
+	let dialog = {
+		alertDialog: process._dialog.alertDialog,
+		fileDialog: process._dialog.fileDialog,
+		folderDialog: process._dialog.folderDialog,
+		modalDialog: process._dialog.modalDialog,
+		confirmDialog: function(msg) { return dialog.modalDialog({title:msg, items:[{type:"edit", value:""}]}); }
+	};
+
 	let modules = {};
+	modules['dialog'] = {exports: dialog, loaded: true};
 	// modules['fs'] = {exports: fs, loaded: true};
 	return {
 		require: function(name) {
