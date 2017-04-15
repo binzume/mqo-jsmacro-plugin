@@ -21,14 +21,17 @@ function mkTeeth(param) {
 	let r = param.r;
 	let deg = param.pa;
 	let r1 = r + m * 1.0;
-	let r2 = r - m * 1.25;
+	let r2 = r - m * 1.2;
 	let rb = m * n / 2 * Math.cos(deg * Math.PI / 180);
 
 	let cur = [[r2,0]];
 	let a1 = 0;
-	for (let t = 0; t < 1.0; t += 0.05) {
+	for (let t = 0; t < 1.0; t += 0.02) {
 		let x = rb * (Math.cos(t) + t * Math.sin(t));
 		let y = rb * (Math.sin(t) - t * Math.cos(t));
+		if (x*x + y*y < r2*r2) {
+			continue;
+		}
 		if (x*x + y*y > r*r && a1 == 0) {
 			let l = cur[cur.length - 1];
 			let l1 = Math.sqrt(l[0]*l[0] + l[1]*l[1]);
@@ -70,29 +73,51 @@ function involuteGear(dst, m,n,r, opt) {
 	let v0 = dst.verts.append(0, 0, 0);
 	let a = Math.PI*2 / n;
 	let param = mkParam({m: m, n:n, r:r});
-
+	let hole = 2;
+	let hl = null;
+	let tl = null;
 	for (let i=0; i<n; i++) {
-		let vs = mkTeeth(param).map( (p) => {
+		let vs = mkTeeth(param).map( (p, idx) => {
+			if (idx == 0 && tl) return tl;
 			let px = p[0]*Math.cos(a*i) - p[1] * Math.sin(a*i);
 			let py = p[0]*Math.sin(a*i) + p[1] * Math.cos(a*i);
 			return dst.verts.append(px, 0, py);
 		});
 		dst.faces.append(vs);
-		dst.faces.append([v0, vs[0], vs[vs.length-1]]);
 
 		let p = mkTeeth(param)[0];
 		let px = p[0]*Math.cos(a*(i+1)) - p[1] * Math.sin(a*(i+1));
 		let py = p[0]*Math.sin(a*(i+1)) + p[1] * Math.cos(a*(i+1));
 		let vn = dst.verts.append(px, 0, py);
-		dst.faces.append([v0, vs[vs.length-1], vn]);
+		tl = vn;
+		if (hole > 0) {
+			let h1 = hl || dst.verts.append(Math.cos(a*i)*hole, 0, Math.sin(a*i)*hole);
+			let h2 = dst.verts.append(Math.cos(a*(i+0.5))*hole, 0, Math.sin(a*(i+0.5))*hole);
+			let h3 = dst.verts.append(Math.cos(a*(i+1))*hole, 0, Math.sin(a*(i+1))*hole);
+			hl = h3;
+			dst.faces.append([h2, h1,vs[0], vs[vs.length-1]]);
+			dst.faces.append([h3, h2, vs[vs.length-1], vn]);
+		} else {
+			dst.faces.append([v0, vs[0], vs[vs.length-1]]);
+			dst.faces.append([v0, vs[vs.length-1], vn]);
+		}
 	}
 	return param;
 }
 
 if (typeof exports === "undefined") {
-	// test
-	let dst = document.objects[0];
-	involuteGear(dst, 2, 10);
+	let dialog = require('dialog');
+	let content = {title:"make gear",
+	               items: [{type:"hframe", items:["モジュール:", {id:"m", type:"number", value: 2.0}]},
+	                       {type:"hframe", items:["歯数:", {id:"n", type:"number", value: 15}]}
+	                      ]};
+	let result = dialog.modalDialog(content, ["OK","Cancel"]);
+	if (result && result.button == 0) { // button 0 = OK
+		// test
+		let dst = document.objects[0];
+		let r = involuteGear(dst, parseFloat(result.values["m"]), parseFloat(result.values["n"]));
+		console.log("pitch R=" + r.r);
+	}
 } else {
 	exports["involuteGear"] = involuteGear;
 }
