@@ -21,11 +21,11 @@ zipに含まれるDLLは**64bit版**です．(32ビット版は余裕があっ�
 
 - `...` ファイル選択ダイアログを開く
 - `Run` 実行
+- `Preset` スクリプトを5個まで登録できます．プラグインのサブコマンドとしてショートカットキーの割当が可能です．
 
+エディタとしての機能は持ってないので，お使いのテキストエディタで書いたjsファイルを指定して実行して下さい．
 ファイル名の入力欄に `js:`から始まる文字列を入れて実行すると入力内容が実行されます `js:console.log("hello")` ．
 最後に実行したスクリプトの変数などにアクセスできます(デバッグ用)．
-
-`Preset`タブでスクリプトを5個まで登録できます．プラグインのサブコマンドとしてショートカットキーの割当が可能です．
 
 ## API
 
@@ -150,6 +150,7 @@ document.objects[0].transform(MQMatrix.rotateMatrix(1,0,0, 15));
 ### その他
 
 - console.log("message") メッセージをログに出力
+- alert/prompt/confirm ダイアログ表示
 - setInterval(), setTimeout() タイマー(暫定仕様なので利用は非推奨)
 - module.include(scriptPath) 別スクリプトの読み込み＆実行(仮実装)
 - module.require(scriptPath) CommonJS形式のモジュール読み込み(仮実装)
@@ -163,6 +164,14 @@ setInterval(() => {
 	document.scene.cameraLookAt = originalLookAt;
 }, 10);
 ```
+
+
+組み込みのモジュールがいくつかあります
+
+- geom Vertex/Matrix(MQMatrixの実体)
+- dialog 各種ダイアログ表示
+- fs ファイルアクセス(実装中)
+- child_process プロセス起動(実装中)
 
 ## TODO
 
