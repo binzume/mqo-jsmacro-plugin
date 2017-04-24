@@ -20,6 +20,8 @@
 
 #define UTF8(s) v8::String::NewFromUtf8(isolate, s, v8::NewStringType::kNormal).ToLocalChecked()
 
+#define PLUGIN_VERSION "v0.1.0"
+
 using namespace v8;
 
 HINSTANCE hInstance;
@@ -250,7 +252,7 @@ static Local<ObjectTemplate> NewProcessObject(Isolate* isolate) {
 	fileObj->Set(String::NewFromUtf8(isolate, "write", NewStringType::kNormal).ToLocalChecked(),
 		FunctionTemplate::New(isolate, WriteFile));
 
-	obj->Set(UTF8("version"), UTF8("v0.1.0"), PropertyAttribute::ReadOnly);
+	obj->Set(UTF8("version"), UTF8(PLUGIN_VERSION), PropertyAttribute::ReadOnly);
 	obj->Set(UTF8("stdout"), fileObj);
 	obj->Set(UTF8("stderr"), fileObj);
 	obj->Set(UTF8("nextTick"), FunctionTemplate::New(isolate, JSMacroPlugin::SetNextTick));
@@ -455,6 +457,7 @@ MaybeLocal<Value> JsContext::ExecScript(const std::string &source, const std::st
 }
 
 Local<ObjectTemplate> FileSystemTemplate(Isolate* isolate);
+Local<ObjectTemplate> ChildProcessTemplate(Isolate* isolate);
 
 JsContext* JSMacroPlugin::GetJsContext(MQDocument doc) {
 	if (!jsContext) {
@@ -470,10 +473,13 @@ JsContext* JSMacroPlugin::GetJsContext(MQDocument doc) {
 		if (jsfile.fail()) {
 			debug_log("Read error: " + coreJsName, 2);
 		} else {
-			auto process = isolate->GetCurrentContext()->Global()->Get(UTF8("process")).As<Object>();
-			process->Set(UTF8("unsafe_fs"), FileSystemTemplate(isolate)->NewInstance());
+			auto global = isolate->GetCurrentContext()->Global();
+			auto unsafe = ObjectTemplate::New(isolate);
+			unsafe->Set(UTF8("fs"), FileSystemTemplate(isolate));
+			unsafe->Set(UTF8("child_process"), ChildProcessTemplate(isolate));
+			global->Set(UTF8("unsafe"), unsafe->NewInstance());
 			jsContext->ExecScript(buffer.str(), "core.js");
-			process->Delete(UTF8("unsafe_fs")); // core.js only
+			global->Delete(UTF8("unsafe")); // core.js only
 		}
 	}
 	return jsContext;

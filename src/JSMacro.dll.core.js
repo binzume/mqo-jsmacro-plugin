@@ -23,64 +23,76 @@ function setInterval(f, interval) {
 	process.nextTick(wf, interval);
 }
 
-MQObject.prototype.transform = function(tr) {
-	const length = this.verts.length;
-	if (typeof tr === "function") {
-		for(let i=0; i< length; i++) {
-			this.verts[i] =  tr(this.verts[i]);
-		}
-	} else {
-		for(let i=0; i< length; i++) {
-			this.verts[i] = tr.transformV(this.verts[i]);
+// modules
+(function (global){
+
+// geometry
+class Vertex {
+	constructor(x,y,z) {
+		if (x.x !== undefined) {
+			this.x = x.x; this.y = x.y; this.z = x.z;
+		} else {
+			this.x = x; this.y = y; this.z = z;
 		}
 	}
-};
-
-function MQMatrix(arr) {
-	this.m = new Float32Array(arr || [1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1]);
+	length() { return Math.sqrt(this.x*this.x + this.y*this.y + this.z*this.z); }
+	negative() { return new Vertex(-this.x, -this.y, -this.z); }
+	clone() { return new Vertex(this.x, this.y, this.z); }
+	plus(v) { return new Vertex(this.x + v.x, this.y + v.y, this.z + v.z); }
+	minus(v) { return new Vertex(this.x - v.x, this.y - v.y, this.z - v.z); }
+	mul(a) { return new Vertex(this.x * a, this.y * a, this.z * a); }
+	dot(v) { return this.x * v.x + this.y * v.y + this.z * v.z; }
+	cross(v) {
+		return new Vector(
+			this.y * v.z - this.z * v.y,
+			this.z * v.x - this.x * v.z,
+			this.x * v.y - this.y * v.x );
+	}
+	unit() {
+		let l = this.length();
+		return new Vertex(this.x / l, this.y / l, this.z / l);
+	}
 }
 
-MQMatrix.prototype.mul = function(m) {
-	return MQMatrix.multiply(this, m);
-};
-
-MQMatrix.prototype.transformV = function(p) {
-	const m = this.m;
-	if (p.length > 0) {
-		return [
-			m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3],
-			m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7],
-			m[8] * p[0] + m[9] * p[1] + m[10]* p[2] + m[11]];
-	} else {
-		return {
-			x: m[0] * p.x + m[1] * p.y + m[2] * p.z + m[3],
-			y: m[4] * p.x + m[5] * p.y + m[6] * p.z + m[7],
-			z: m[8] * p.x + m[9] * p.y + m[10]* p.z + m[11]};
+class Matrix{
+	constructor(arr) {
+		this.m = new Float32Array(arr || [1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1]);
 	}
-};
-
-MQMatrix.scaleMatrix = function(x,y,z) {
-	return new MQMatrix([x, 0, 0, 0,  0, y, 0, 0,  0, 0, z, 0,  0, 0, 0, 1]);
-};
-
-MQMatrix.translateMatrix = function(x,y,z) {
-	return new MQMatrix([1, 0, 0, x,  0, 1, 0, y,  0, 0, 1, z,  0, 0, 0, 1]);
-};
-
-MQMatrix.rotateMatrix = function(x,y,z,a) {
-	a *= Math.PI / 180;
-	const c = Math.cos(a), s = Math.sin(a);
-	const c1 = 1 - c;
-	return new MQMatrix([
-		x * x * c1 + c,  x * y * c1 - z * s,  x * z * c1 + y * s,  0,
-		y * x * c1 + z * s,  y * y * c1 + c,  y * z * c1 - x * s,  0,
-		z * x * c1 - y * s,  z * y * c1 + x * s,  z * z * c1 + c,  0,
-		0, 0, 0, 1
-	]);
-};
-
-MQMatrix.multiply = function(m1, m2) {
-	let result = new MQMatrix();
+	mul(m) { return Matrix.multiply(this, m); }
+	transform(p) {
+		let m = this.m;
+		if (p.length > 0) {
+			return [
+				m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3],
+				m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7],
+				m[8] * p[0] + m[9] * p[1] + m[10]* p[2] + m[11]];
+		} else {
+			return new Vertex(
+				m[0] * p.x + m[1] * p.y + m[2] * p.z + m[3],
+				m[4] * p.x + m[5] * p.y + m[6] * p.z + m[7],
+				m[8] * p.x + m[9] * p.y + m[10]* p.z + m[11]);
+		}
+	}
+	static scaleMatrix(x,y,z) {
+		return new Matrix([x, 0, 0, 0,  0, y, 0, 0,  0, 0, z, 0,  0, 0, 0, 1]);
+	}
+	static translateMatrix(x,y,z) {
+		return new Matrix([1, 0, 0, x,  0, 1, 0, y,  0, 0, 1, z,  0, 0, 0, 1]);
+	}
+	static rotateMatrix(x,y,z,a) {
+		a *= Math.PI / 180;
+		const c = Math.cos(a), s = Math.sin(a);
+		const c1 = 1 - c;
+		return new Matrix([
+			x * x * c1 + c,  x * y * c1 - z * s,  x * z * c1 + y * s,  0,
+			y * x * c1 + z * s,  y * y * c1 + c,  y * z * c1 - x * s,  0,
+			z * x * c1 - y * s,  z * y * c1 + x * s,  z * z * c1 + c,  0,
+			0, 0, 0, 1
+		]);
+	}
+}
+Matrix.multiply = function(m1, m2) {
+	let result = new Matrix();
 	let a = m1.m, b = m2.m, r = result.m;
 	r[0] = a[0] * b[0] + a[1] * b[4] + a[2] * b[8] + a[3] * b[12];
 	r[1] = a[0] * b[1] + a[1] * b[5] + a[2] * b[9] + a[3] * b[13];
@@ -101,26 +113,33 @@ MQMatrix.multiply = function(m1, m2) {
 	return result;
 };
 
+let geom = {
+	Vertex: Vertex,
+	Matrix: Matrix
+};
 
-var module = (function(fs){
+// dialog TODO
+let dialog = {
+	alertDialog: process._dialog.alertDialog,
+	fileDialog: process._dialog.fileDialog,
+	folderDialog: process._dialog.folderDialog,
+	modalDialog: process._dialog.modalDialog,
+	confirmDialog: function(msg) { return dialog.modalDialog({title:msg, items:[{type:"text", value:"", id:"_"}]}); }
+};
 
-	// TODO
-	let dialog = {
-		alertDialog: process._dialog.alertDialog,
-		fileDialog: process._dialog.fileDialog,
-		folderDialog: process._dialog.folderDialog,
-		modalDialog: process._dialog.modalDialog,
-		confirmDialog: function(msg) { return dialog.modalDialog({title:msg, items:[{type:"edit", value:""}]}); }
-	};
 
+// module
+global.module = (function(unsafe){
 	let modules = {};
 	modules['dialog'] = {exports: dialog, loaded: true};
-	// modules['fs'] = {exports: fs, loaded: true};
+	modules['geom'] = {exports: geom, loaded: true};
+	// modules['fs'] = {exports: unsafe.fs, loaded: true};
+	// modules['child_process'] = {exports: unsafe.child_process, loaded: true};
 	return {
 		require: function(name) {
 			if (!modules[name]) {
 				console.log("load: "+name);
-				let script = fs.readFile(process.scriptDir() + "/" + name);
+				let script = unsafe.fs.readFile(process.scriptDir() + "/" + name);
 				let mod = {
 					id: name,
 					filename: name,
@@ -136,9 +155,27 @@ var module = (function(fs){
 		},
 		include: function(name) {
 			console.log("load: "+name);
-			let script = fs.readFile(process.scriptDir() + "/" + name);
+			let script = unsafe.fs.readFile(process.scriptDir() + "/" + name);
 			return process.execScript(script, name);
 		}
 	};
-})(process.unsafe_fs); // process.unsafe_fs : only core.js.
-var require = module.require;
+})(unsafe); // global.unsafe : only core.js.
+
+global.require = global.module.require;
+
+global.MQMatrix = Matrix;
+
+})(this);
+
+MQObject.prototype.transform = function(tr) {
+	const length = this.verts.length;
+	if (typeof tr === "function") {
+		for(let i=0; i< length; i++) {
+			this.verts[i] =  tr(this.verts[i]);
+		}
+	} else {
+		for(let i=0; i< length; i++) {
+			this.verts[i] = tr.transform(this.verts[i]);
+		}
+	}
+};
