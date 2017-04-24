@@ -1,28 +1,5 @@
 "use strict";
 
-let console = {
-	"log" : function(v) { process.stdout.write(v); }
-};
-
-let alert = process._dialog.alertDialog; // alert(message);
-
-function setTimeout(f, timeout) {
-	let args = arguments.length > 2 ? [arguments[2]] : [];
-	var wf = function(){
-		f.apply(null, args);
-	};
-	process.nextTick(wf, interval);
-}
-
-function setInterval(f, interval) {
-	let args = arguments.length > 2 ? [arguments[2]] : [];
-	var wf = function(){
-		f.apply(null, args);
-		process.nextTick(wf, interval);
-	};
-	process.nextTick(wf, interval);
-}
-
 // modules
 (function (global){
 
@@ -124,9 +101,9 @@ let dialog = {
 	fileDialog: process._dialog.fileDialog,
 	folderDialog: process._dialog.folderDialog,
 	modalDialog: process._dialog.modalDialog,
-	confirmDialog: function(msg) { return dialog.modalDialog({title:msg, items:[{type:"text", value:"", id:"_"}]}); }
+	confirmDialog: function(msg) { let r = process._dialog.modalDialog({title:msg, items:[msg]}, ["OK", "Cancel"]); return r && r.button == 0; },
+	promptDialog: function(msg, v) { let r = process._dialog.modalDialog({title:msg, items:[{type:"text", value:v||"", id:"_"}]}, ["OK"]); return r && r.values['_']; }
 };
-
 
 // module
 global.module = (function(unsafe){
@@ -167,6 +144,33 @@ global.MQMatrix = Matrix;
 
 })(this);
 
+
+// Built-in functions
+let alert = require("dialog").alertDialog; // alert(message);
+let confirm = require("dialog").confirmDialog; // confirm(message) -> boolean
+let prompt = require("dialog").promptDialog; // confirm(message, default) -> value
+let console = {
+	"log" : function(v) { process.stdout.write(v); }
+};
+
+function setTimeout(f, timeout) {
+	let args = arguments.length > 2 ? [arguments[2]] : [];
+	var wf = function(){
+		f.apply(null, args);
+	};
+	process.nextTick(wf, interval);
+}
+
+function setInterval(f, interval) {
+	let args = arguments.length > 2 ? [arguments[2]] : [];
+	var wf = function(){
+		f.apply(null, args);
+		process.nextTick(wf, interval);
+	};
+	process.nextTick(wf, interval);
+}
+
+
 MQObject.prototype.transform = function(tr) {
 	const length = this.verts.length;
 	if (typeof tr === "function") {
@@ -179,3 +183,4 @@ MQObject.prototype.transform = function(tr) {
 		}
 	}
 };
+
