@@ -3,32 +3,50 @@
 // modules
 (function (global){
 
+global.mqdocument = document;
+
 // geometry
-class Vertex {
+class Vector3 {
 	constructor(x,y,z) {
 		if (x.x !== undefined) {
 			this.x = x.x; this.y = x.y; this.z = x.z;
+		} else if (x.length === 3) {
+			this.x = x[0]; this.y = x[1]; this.z = x[2];
 		} else {
 			this.x = x; this.y = y; this.z = z;
 		}
 	}
 	length() { return Math.sqrt(this.x*this.x + this.y*this.y + this.z*this.z); }
-	negative() { return new Vertex(-this.x, -this.y, -this.z); }
-	clone() { return new Vertex(this.x, this.y, this.z); }
-	plus(v) { return new Vertex(this.x + v.x, this.y + v.y, this.z + v.z); }
-	minus(v) { return new Vertex(this.x - v.x, this.y - v.y, this.z - v.z); }
-	mul(a) { return new Vertex(this.x * a, this.y * a, this.z * a); }
+	plus(v) { return new Vector3(this.x + v.x, this.y + v.y, this.z + v.z); }
+	minus(v) { return new Vector3(this.x - v.x, this.y - v.y, this.z - v.z); }
+	mul(a) { return new Vector3(this.x * a, this.y * a, this.z * a); }
+	div(a) { return new Vector3(this.x / a, this.y / a, this.z / a); }
+	negated() { return new Vector3(-this.x, -this.y, -this.z); }
 	dot(v) { return this.x * v.x + this.y * v.y + this.z * v.z; }
 	cross(v) {
-		return new Vector(
+		return new Vector3(
 			this.y * v.z - this.z * v.y,
 			this.z * v.x - this.x * v.z,
 			this.x * v.y - this.y * v.x );
 	}
-	unit() {
-		let l = this.length();
-		return new Vertex(this.x / l, this.y / l, this.z / l);
+	unit() { return this.div(this.length()); }
+	lerp(v, t) { return this.plus(v.minus(this).mul(t)); }
+	toString() { return "(" + this.x + " " + this.y + " " + this.z + ")";}
+}
+
+class Plane {
+	constructor(normal, w) {
+	  this._normal = normal;
+	  this._w = w;
 	}
+	static fromPoints(a, b, c) {
+	  let n = b.minus(a).cross(c.minus(a)).unit();
+	  return new Plane(n, n.dot(a));
+	}
+	get normal() { return this._normal; }
+	get w() { return this._w; }
+	flipped() { return new Plane(this._normal.negated(), -this._w); }
+	toString() { return "Plane(" + this._normal.toString() + "," + this + ")"; }
 }
 
 class Matrix{
@@ -44,7 +62,7 @@ class Matrix{
 				m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7],
 				m[8] * p[0] + m[9] * p[1] + m[10]* p[2] + m[11]];
 		} else {
-			return new Vertex(
+			return new Vector3(
 				m[0] * p.x + m[1] * p.y + m[2] * p.z + m[3],
 				m[4] * p.x + m[5] * p.y + m[6] * p.z + m[7],
 				m[8] * p.x + m[9] * p.y + m[10]* p.z + m[11]);
@@ -91,7 +109,9 @@ Matrix.multiply = function(m1, m2) {
 };
 
 let geom = {
-	Vertex: Vertex,
+	Vector3: Vector3,
+	Vertex: Vector3,
+	Plane: Plane,
 	Matrix: Matrix
 };
 

@@ -22,7 +22,7 @@ static void ExecSync(const FunctionCallbackInfo<Value>& args) {
 		isolate->ThrowException(Exception::TypeError(UTF8("invalid path")));
 		return;
 	}
-	String::Utf8Value cmd(args[0].As<String>());
+	String::Utf8Value cmd(isolate, args[0].As<String>());
 
 	SECURITY_ATTRIBUTES	sa = { 0 };
 	HANDLE read, write;
@@ -74,7 +74,7 @@ static void Exec(const FunctionCallbackInfo<Value>& args) {
 		isolate->ThrowException(Exception::TypeError(UTF8("invalid path")));
 		return;
 	}
-	String::Utf8Value cmd(args[0].As<String>());
+	String::Utf8Value cmd(isolate, args[0].As<String>());
 
 	SECURITY_ATTRIBUTES	sa = { 0 };
 	HANDLE read, write;

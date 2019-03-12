@@ -28,42 +28,44 @@ public:
 	std::vector<std::pair<Local<Object>, MQEdit*>> itemholders;
 	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
 	Isolate* isolate;
+	MQWindow mainWindow;
 
-	Dialog(Isolate* i) : MQDialog(MQWindow::GetMainWindow()), button(-1), isolate(i) {
+	Dialog(Isolate* i) : mainWindow(MQWindow::GetMainWindow()), MQDialog(mainWindow), button(-1), isolate(i) {
 	}
 
 	void AddItems(Local<Array> items, MQWidgetBase *parent) {
 		for (uint32_t i = 0; i < items->Length(); i++) {
 			Local<Value> item = items->Get(i);
+			auto context = isolate->GetCurrentContext();
 			if (item->IsString()) {
-				std::wstring label = converter.from_bytes(*String::Utf8Value(item.As<String>()));
+				std::wstring label = converter.from_bytes(*String::Utf8Value(isolate, item.As<String>()));
 				auto *w = this->CreateLabel(this, label);
 				parent->AddChild(w);
 			} else if (item->IsObject()) {
 				Local<Value> type = item.As<Object>()->Get(UTF8("type"));
 				Local<Value> value = item.As<Object>()->Get(UTF8("value"));
 				// Local<String> id = item.As<Object>()->Get(UTF8("id")).As<String>();
-				if (type->Equals(UTF8("text"))) {
-					std::wstring v = converter.from_bytes(*String::Utf8Value(value.As<String>()));
+				if (type->Equals(context, UTF8("text")).ToChecked()) {
+					std::wstring v = converter.from_bytes(*String::Utf8Value(isolate, value.As<String>()));
 					auto *w = this->CreateEdit(this, v);
 					parent->AddChild(w);
 					itemholders.push_back(std::make_pair(item.As<Object>(), w));
-				} else if (type->Equals(UTF8("number"))) {
-					std::wstring v = converter.from_bytes(*String::Utf8Value(value.As<String>()));
+				} else if (type->Equals(context, UTF8("number")).ToChecked()) {
+					std::wstring v = converter.from_bytes(*String::Utf8Value(isolate, value.As<String>()));
 					auto *w = this->CreateEdit(this, v);
 					w->SetNumeric(MQEdit::NUMERIC_DOUBLE);
 					parent->AddChild(w);
 					itemholders.push_back(std::make_pair(item.As<Object>(), w));
-				} else if (type->Equals(UTF8("button"))) {
-					std::wstring v = converter.from_bytes(*String::Utf8Value(value.As<String>()));
+				} else if (type->Equals(context, UTF8("button")).ToChecked()) {
+					std::wstring v = converter.from_bytes(*String::Utf8Value(isolate, value.As<String>()));
 					auto *w = this->CreateButton(this, v);
 					parent->AddChild(w);
-				} else if (type->Equals(UTF8("hframe"))) {
+				} else if (type->Equals(context, UTF8("hframe")).ToChecked()) {
 					auto *w = this->CreateHorizontalFrame(this);
 					parent->AddChild(w);
 					Local<Array> items = item.As<Object>()->Get(UTF8("items")).As<Array>();
 					AddItems(items, w);
-				} else if (type->Equals(UTF8("vframe"))) {
+				} else if (type->Equals(context, UTF8("vframe")).ToChecked()) {
 					auto *w = this->CreateVerticalFrame(this);
 					parent->AddChild(w);
 					Local<Array> items = item.As<Object>()->Get(UTF8("items")).As<Array>();
@@ -90,7 +92,7 @@ static void ModalDialog(const FunctionCallbackInfo<Value>& args) {
 	Local<String> title = params->Get(UTF8("title")).As<String>();
 	Local<Array> items = params->Get(UTF8("items")).As<Array>();
 
-	dialog->SetTitle(dialog->converter.from_bytes(*String::Utf8Value(title)));
+	dialog->SetTitle(dialog->converter.from_bytes(*String::Utf8Value(isolate, title)));
 	dialog->AddItems(items, dialog);
 
 
@@ -100,7 +102,7 @@ static void ModalDialog(const FunctionCallbackInfo<Value>& args) {
 		dialog->AddChild(frame);
 		for (int i = 0; i < buttonCount; i++) {
 			Local<String> name = buttons->Get(i).As<String>();
-			MQButton *b = dialog->CreateButton(frame, dialog->converter.from_bytes(*String::Utf8Value(name)));
+			MQButton *b = dialog->CreateButton(frame, dialog->converter.from_bytes(*String::Utf8Value(isolate, name)));
 			b->AddClickEvent(dialog, &Dialog::OnClick);
 			b->SetTag(i);
 			frame->AddChild(b);
@@ -134,14 +136,15 @@ static void FileDialog(const FunctionCallbackInfo<Value>& args) {
 		isolate->ThrowException(Exception::TypeError(UTF8("invalid args")));
 		return;
 	}
-	String::Utf8Value path(args[0].As<String>());
-	bool save = args[1]->BooleanValue();
+	String::Utf8Value path(isolate, args[0].As<String>());
+	bool save = args[1]->BooleanValue(isolate);
 
 	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
 	std::wstring filter = converter.from_bytes(*path);
 
 	if (save) {
-		auto dialog = new MQSaveFileDialog(MQWindow::GetMainWindow());
+		auto window = MQWindow::GetMainWindow();
+		auto dialog = new MQSaveFileDialog(window);
 		dialog->AddFilter(filter);
 		if (dialog->Execute()) {
 			std::wstring path = dialog->GetFileName();
@@ -150,7 +153,8 @@ static void FileDialog(const FunctionCallbackInfo<Value>& args) {
 			args.GetReturnValue().SetNull();
 		}
 	} else {
-		auto dialog = new MQOpenFileDialog(MQWindow::GetMainWindow());
+		auto window = MQWindow::GetMainWindow();
+		auto dialog = new MQOpenFileDialog(window);
 		dialog->AddFilter(filter);
 		if (dialog->Execute()) {
 			std::wstring path = dialog->GetFileName();
@@ -168,12 +172,13 @@ static void FolderDialog(const FunctionCallbackInfo<Value>& args) {
 		isolate->ThrowException(Exception::TypeError(UTF8("invalid args")));
 		return;
 	}
-	String::Utf8Value path(args[0].As<String>());
+	String::Utf8Value path(isolate, args[0].As<String>());
 
 	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
 	std::wstring filter = converter.from_bytes(*path);
 
-	auto dialog = new MQFolderDialog(MQWindow::GetMainWindow());
+	auto window = MQWindow::GetMainWindow();
+	auto dialog = new MQFolderDialog(window);
 	// dialog->SetFileMustExist(true);
 	if (dialog->Execute()) {
 		std::wstring path = dialog->GetFolder();
@@ -191,12 +196,13 @@ static void AlertDialog(const FunctionCallbackInfo<Value>& args) {
 		isolate->ThrowException(Exception::TypeError(UTF8("invalid args")));
 		return;
 	}
-	String::Utf8Value message(args[0].As<String>());
+	String::Utf8Value message(isolate, args[0].As<String>());
 
 	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
 	std::wstring wmessage = converter.from_bytes(*message);
 	std::wstring wtitle = L"";
-	MQDialog::MessageInformationBox(MQWindow::GetMainWindow(), wmessage, wtitle);
+	MQWindow window = MQWindow::GetMainWindow();
+	MQDialog::MessageInformationBox(window, wmessage, wtitle);
 	args.GetReturnValue().SetNull();
 }
 

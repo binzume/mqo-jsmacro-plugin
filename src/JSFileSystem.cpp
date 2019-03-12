@@ -26,7 +26,7 @@ static void ReadFileSync(const FunctionCallbackInfo<Value>& args) {
 		isolate->ThrowException(Exception::TypeError(UTF8("invalid path")));
 		return;
 	}
-	String::Utf8Value path(args.Holder()->Get(UTF8("path")).As<String>());
+	String::Utf8Value path(isolate, args.Holder()->Get(UTF8("path")).As<String>());
 	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
 
 	std::ifstream jsfile(converter.from_bytes(*path));
@@ -52,11 +52,11 @@ static void WriteFileSync(const FunctionCallbackInfo<Value>& args) {
 		isolate->ThrowException(Exception::TypeError(UTF8("invalid path")));
 		return;
 	}
-	String::Utf8Value path(args.Holder()->Get(UTF8("path")).As<String>());
-	String::Utf8Value data(args[0].As<String>());
+	String::Utf8Value path(isolate, args.Holder()->Get(UTF8("path")).As<String>());
+	String::Utf8Value data(isolate, args[0].As<String>());
 
 	int mode = std::ofstream::binary;
-	if (args[1].As<Object>()->Get(UTF8("flag"))->Equals(UTF8("a"))) {
+	if (args[1].As<Object>()->Get(UTF8("flag"))->Equals(isolate->GetCurrentContext(), UTF8("a")).ToChecked()) {
 		mode |= std::ofstream::app;
 	}
 
@@ -88,7 +88,7 @@ static void ReadFile(const FunctionCallbackInfo<Value>& args) {
 		isolate->ThrowException(Exception::TypeError(UTF8("invalid path")));
 		return;
 	}
-	String::Utf8Value path(args[0].As<String>());
+	String::Utf8Value path(isolate, args[0].As<String>());
 	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
 
 	std::ifstream jsfile(converter.from_bytes(*path));
@@ -113,11 +113,11 @@ static void WriteFile(const FunctionCallbackInfo<Value>& args) {
 		isolate->ThrowException(Exception::TypeError(UTF8("invalid data")));
 		return;
 	}
-	String::Utf8Value path(args[0].As<String>());
-	String::Utf8Value data(args[1].As<String>());
+	String::Utf8Value path(isolate, args[0].As<String>());
+	String::Utf8Value data(isolate, args[1].As<String>());
 
 	int mode = std::ofstream::binary;
-	if (args[2].As<Object>()->Get(UTF8("flag"))->Equals(UTF8("a"))) {
+	if (args[2].As<Object>()->Get(UTF8("flag"))->Equals(isolate->GetCurrentContext(), UTF8("a")).ToChecked()) {
 		mode |= std::ofstream::app;
 	}
 
@@ -140,10 +140,10 @@ static void OpenFile(const FunctionCallbackInfo<Value>& args) {
 		isolate->ThrowException(Exception::TypeError(UTF8("invalid path")));
 		return;
 	}
-	String::Utf8Value path(args[0].As<String>());
+	String::Utf8Value path(isolate, args[0].As<String>());
 
 	bool write = false;
-	if (args[2].As<Object>()->Get(UTF8("flag"))->Equals(UTF8("w"))) {
+	if (args[2].As<Object>()->Get(UTF8("flag"))->Equals(isolate->GetCurrentContext(), UTF8("w")).ToChecked()) {
 		write = true;
 	}
 

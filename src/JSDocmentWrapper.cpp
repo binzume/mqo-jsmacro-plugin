@@ -5,7 +5,6 @@
 #include <codecvt>
 #include <vector>
 #include "MQBasePlugin.h"
-#include "MQ3DLib.h"
 
 #include "libplatform/libplatform.h"
 #include "v8.h"
@@ -16,10 +15,36 @@
 
 #define UTF8(s) v8::String::NewFromUtf8(isolate, s, v8::NewStringType::kNormal).ToLocalChecked()
 
-#define CHECK_TYPE_OR_RETURN(O, NAME) if (!(O)->IsObject() || !(O)->GetConstructorName()->Equals(UTF8(NAME))) {\
+#define CHECK_TYPE_OR_RETURN(O, NAME) if (!(O)->IsObject() || !(O)->GetConstructorName()->Equals(isolate->GetCurrentContext(), UTF8(NAME)).ToChecked()) {\
 		isolate->ThrowException(Exception::TypeError(UTF8("not " NAME)));\
 		return;\
 	}
+
+template<typename T> T value_or_default(v8::Maybe<T> maybe, T defvalue) {
+	return maybe.IsJust() ? maybe.ToChecked() : defvalue;
+}
+
+uint32_t get_or_default1(const v8::Local<v8::Value> &value, uint32_t defvalue, v8::Isolate *isolate) {
+	return value_or_default(value->Uint32Value(isolate->GetCurrentContext()), defvalue);
+}
+
+int32_t get_or_default1(const v8::Local<v8::Value> &value, int32_t defvalue, v8::Isolate *isolate) {
+	return value_or_default(value->Int32Value(isolate->GetCurrentContext()), defvalue);
+}
+
+
+double get_or_default1(const v8::Local<v8::Value> &value, double defvalue, v8::Isolate *isolate) {
+	return value_or_default(value.As<v8::Number>()->NumberValue(isolate->GetCurrentContext()), defvalue);
+}
+
+bool get_or_default1(const v8::Local<v8::Value> &value, bool defvalue, v8::Isolate *isolate) {
+	return value.As<v8::Boolean>()->BooleanValue(isolate);
+}
+
+template<typename T>
+T get_or_default(const v8::Local<v8::Object> &value, const char* name, T defvalue, v8::Isolate *isolate) {
+	return get_or_default1(value->Get(UTF8(name)), defvalue, isolate);
+}
 
 void debug_log(const std::string s, int tag = 1);
 
@@ -88,7 +113,7 @@ static void GetVertFaces(const Local<String> property, const PropertyCallbackInf
 	Local<Object> self = info.Holder();
 	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
-	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+	uint32_t index = value_or_default(self->Get(UTF8("index"))->Uint32Value(isolate->GetCurrentContext()), 0U);
 
 	std::vector<int> facearray(obj->GetVertexRelatedFaces(index, nullptr));
 	obj->GetVertexRelatedFaces(index, &facearray[0]);
@@ -137,9 +162,9 @@ static void SetVertex(uint32_t index, Local<Value> value, const PropertyCallback
 		p.z = (float)coord->Get(2).As<Number>()->Value();
 	} else {
 		Local<Object> coord = value.As<Object>();
-		p.x = (float)coord->Get(UTF8("x")).As<Number>()->Value();
-		p.y = (float)coord->Get(UTF8("y")).As<Number>()->Value();
-		p.z = (float)coord->Get(UTF8("z")).As<Number>()->Value();
+		p.x = (float)get_or_default(coord, "x", 0.0, isolate);
+		p.y = (float)get_or_default(coord, "y", 0.0, isolate);
+		p.z = (float)get_or_default(coord, "z", 0.0, isolate);
 	}
 
 	obj->SetVertex(index, p);
@@ -155,16 +180,16 @@ static void AddVertex(const FunctionCallbackInfo<Value>& args) {
 	if (args[0]->IsObject()) {
 		MQPoint p;
 		Local<Object> coord = args[0].As<Object>();
-		p.x = (float)coord->Get(UTF8("x")).As<Number>()->Value();
-		p.y = (float)coord->Get(UTF8("y")).As<Number>()->Value();
-		p.z = (float)coord->Get(UTF8("z")).As<Number>()->Value();
+		p.x = (float)get_or_default(coord, "x", 0.0, isolate);
+		p.y = (float)get_or_default(coord, "y", 0.0, isolate);
+		p.z = (float)get_or_default(coord, "z", 0.0, isolate);
 		int index = obj->AddVertex(p);
 		args.GetReturnValue().Set(index);
 	} else if (args.kArgsLength >= 3) {
 		MQPoint p;
-		p.x = (float)args[0].As<Number>()->Value();
-		p.y = (float)args[1].As<Number>()->Value();
-		p.z = (float)args[2].As<Number>()->Value();
+		p.x = (float)get_or_default1(args[0], 0.0, isolate);
+		p.y = (float)get_or_default1(args[1], 0.0, isolate);
+		p.z = (float)get_or_default1(args[2], 0.0, isolate);
 		int index = obj->AddVertex(p);
 		args.GetReturnValue().Set(index);
 	}
@@ -190,7 +215,7 @@ static void GetVerts(const Local<Name> property, const PropertyCallbackInfo<Valu
 	vertst->Set(UTF8("append"), FunctionTemplate::New(isolate, AddVertex));
 	Local<Object> verts = vertst->NewInstance();
 	verts->Set(UTF8("_obj"), self);
-	verts->SetPrototype(Array::New(isolate));
+	verts->SetPrototype(isolate->GetCurrentContext(), Array::New(isolate));
 
 	info.GetReturnValue().Set(verts);
 }
@@ -209,7 +234,7 @@ static void GetFaceVisible(const Local<String> property, const PropertyCallbackI
 	Local<Object> self = info.Holder();
 	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
-	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+	uint32_t index = get_or_default(self, "index", 0U, isolate);
 
 	info.GetReturnValue().Set(obj->GetFaceVisible(index) != 0);
 }
@@ -219,9 +244,9 @@ static void SetFaceVisible(const Local<String> property, Local<Value> value, con
 	Local<Object> self = info.Holder();
 	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
-	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+	uint32_t index = get_or_default(self, "index", 0U, isolate);
 
-	obj->SetFaceVisible(index, value->BooleanValue());
+	obj->SetFaceVisible(index, value->BooleanValue(isolate));
 }
 
 static void GetFaceUV(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
@@ -229,7 +254,7 @@ static void GetFaceUV(const Local<String> property, const PropertyCallbackInfo<V
 	Local<Object> self = info.Holder();
 	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
-	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+	uint32_t index = get_or_default(self, "index", 0U, isolate);
 
 	std::vector<MQCoordinate> uvarray(obj->GetFacePointCount(index));
 	obj->GetFaceCoordinateArray(index, &uvarray[0]);
@@ -249,15 +274,16 @@ static void SetFaceUV(const Local<String> property, Local<Value> value, const Pr
 	Local<Object> self = info.Holder();
 	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
-	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+	uint32_t index = get_or_default(self, "index", 0U, isolate);
 
 	Handle<Array> array = value.As<Array>();
 	std::vector<MQCoordinate> uvarray(obj->GetFacePointCount(index));
 	for (int i = 0; i < uvarray.size(); i++) {
 		auto uv = array->Get(i).As<Object>();
-		uvarray[i].u = (float)uv->Get(UTF8("u"))->NumberValue();
-		uvarray[i].v = (float)uv->Get(UTF8("v"))->NumberValue();
+		uvarray[i].u = (float)get_or_default(uv, "u", 0.0, isolate);
+		uvarray[i].v = (float)get_or_default(uv, "v", 0.0, isolate);
 	}
+
 	obj->SetFaceCoordinateArray(index, &uvarray[0]);
 }
 
@@ -266,7 +292,7 @@ static void GetFaceMaterial(const Local<String> property, const PropertyCallback
 	Local<Object> self = info.Holder();
 	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
-	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+	uint32_t index = get_or_default(self, "index", 0U, isolate);
 
 	info.GetReturnValue().Set(obj->GetFaceMaterial(index));
 }
@@ -276,9 +302,9 @@ static void SetFaceMaterial(const Local<String> property, Local<Value> value, co
 	Local<Object> self = info.Holder();
 	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
-	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+	uint32_t index = get_or_default(self, "index", 0U, isolate);
 
-	obj->SetFaceMaterial(index, value->Int32Value());
+	obj->SetFaceMaterial(index, get_or_default1(value, 0U, isolate));
 }
 
 static void InvertFace(const FunctionCallbackInfo<Value>& args) {
@@ -286,7 +312,7 @@ static void InvertFace(const FunctionCallbackInfo<Value>& args) {
 	Local<Object> self = args.Holder();
 	Local<Object> _obj = self->Get(UTF8("_obj")).As<Object>();
 	MQObject obj = static_cast<MQObject>(_obj->GetInternalField(0).As<External>()->Value());
-	uint32_t index = self->Get(UTF8("index"))->Uint32Value();
+	uint32_t index = get_or_default(self, "index", 0U, isolate);
 	obj->InvertFace(index);
 }
 
@@ -344,7 +370,7 @@ static void SetFace(uint32_t index, Local<Value> value, const PropertyCallbackIn
 	obj->InsertFace(index, count, points);
 	delete[] points;
 	if (value.As<Object>()->Get(UTF8("material"))->IsInt32()) {
-		obj->SetFaceMaterial(index, value.As<Object>()->Get(UTF8("material")).As<Integer>()->Int32Value());
+		obj->SetFaceMaterial(index, get_or_default(value.As<Object>(), "material", 0U, isolate));
 	}
 
 	info.GetReturnValue().Set(value);
@@ -366,7 +392,7 @@ static void AddFace(const FunctionCallbackInfo<Value>& args) {
 		int index = obj->AddFace(count, points);
 		delete[] points;
 		if (args[1]->IsInt32()) {
-			obj->SetFaceMaterial(index, args[1]->Int32Value());
+			obj->SetFaceMaterial(index, get_or_default1(args[1], 0, isolate));
 		}
 		args.GetReturnValue().Set(index);
 	}
@@ -392,7 +418,7 @@ static void GetFaces(const Local<Name> property, const PropertyCallbackInfo<Valu
 	facest->Set(UTF8("append"), FunctionTemplate::New(isolate, AddFace));
 	Local<Object> faces = facest->NewInstance();
 	faces->Set(UTF8("_obj"), self);
-	faces->SetPrototype(Array::New(isolate));
+	faces->SetPrototype(isolate->GetCurrentContext(), Array::New(isolate));
 	info.GetReturnValue().Set(faces);
 }
 
@@ -415,7 +441,7 @@ static void SetObjectName(const Local<String> property, Local<Value> value, cons
 	Isolate* isolate = info.GetIsolate();
 	MQObject obj = GetInternal<MQObject>(info);
 
-	obj->SetName(utf8ToSjis(*String::Utf8Value(value)).c_str());
+	obj->SetName(utf8ToSjis(*String::Utf8Value(isolate, value)).c_str());
 }
 
 static void GetObjectVisible(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
@@ -471,7 +497,8 @@ static void SetObjectType(const Local<String> property, Local<Value> value, cons
 	Isolate* isolate = info.GetIsolate();
 	MQObject obj = GetInternal<MQObject>(info);
 
-	obj->SetType(value->Int32Value());
+
+	obj->SetType(get_or_default1(value, 0, isolate));
 }
 
 static void GetObjectIndex(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
@@ -489,7 +516,7 @@ static void FreezeObject(const FunctionCallbackInfo<Value>& args) {
 
 	int flag;
 	if (args.kArgsLength > 0) {
-		flag = args[0].As<Integer>()->Int32Value();
+		flag = get_or_default1(args[0], 0, isolate);
 	} else {
 		flag = MQOBJECT_FREEZE_ALL;
 	}
@@ -518,20 +545,20 @@ static void GetVertexIndexFromId(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
 	MQObject obj = GetInternal<MQObject>(args);
 
-	args.GetReturnValue().Set(obj->GetVertexIndexFromUniqueID(args[0]->Int32Value()));
+	args.GetReturnValue().Set(obj->GetVertexIndexFromUniqueID(get_or_default1(args[0], 0U, isolate)));
 }
 
 static void GetFaceIndexFromId(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
 	MQObject obj = GetInternal<MQObject>(args);
 
-	args.GetReturnValue().Set(obj->GetFaceIndexFromUniqueID(args[0]->Int32Value()));
+	args.GetReturnValue().Set(obj->GetFaceIndexFromUniqueID(get_or_default1(args[0], 0U, isolate)));
 }
 
 static Handle<Object> MQObjectWrap(Isolate* isolate, MQObject o) {
 	Local<Value> args[] = { External::New(isolate, o) };
 	return isolate->GetCurrentContext()->Global()
-		->Get(UTF8("MQObject")).As<Function>()->CallAsConstructor(1, args).As<Object>();
+		->Get(UTF8("MQObject")).As<Function>()->CallAsConstructor(isolate->GetCurrentContext(), 1, args).ToLocalChecked().As<Object>();
 }
 
 static void CloneObject(const FunctionCallbackInfo<Value>& args) {
@@ -577,7 +604,7 @@ static void MQObjectConstructor(const FunctionCallbackInfo<Value>& args) {
 	} else {
 		MQObject obj = MQ_CreateObject();
 		if (args.kArgsLength >= 1 && args[0]->IsString()) {
-			obj->SetName(utf8ToSjis(*String::Utf8Value(args[0])).c_str());
+			obj->SetName(utf8ToSjis(*String::Utf8Value(isolate, args[0])).c_str());
 		} else {
 			MQDocument doc = static_cast<MQDocument>(args.Data().As<External>()->Value());
 			char name[256];
@@ -615,8 +642,9 @@ static void DeleteObject(const FunctionCallbackInfo<Value>& args) {
 	MQDocument doc = static_cast<MQDocument>(args.Data().As<External>()->Value());
 
 	if (args[0]->IsInt32()) {
-		doc->DeleteObject(args[0]->Int32Value());
-		args.Holder().As<Array>()->Delete(args[0]->Int32Value());
+		uint32_t index = get_or_default1(args[0], 0U, isolate);
+		doc->DeleteObject(index);
+		args.Holder().As<Array>()->Delete(isolate->GetCurrentContext(), index);
 	} else {
 		Local<Object> _obj = args[0].As<Object>();
 		CHECK_TYPE_OR_RETURN(_obj, "MQObject");
@@ -625,7 +653,7 @@ static void DeleteObject(const FunctionCallbackInfo<Value>& args) {
 		int idx = doc->GetObjectIndex(obj);
 		if (idx >= 0) {
 			doc->DeleteObject(idx);
-			args.Holder().As<Array>()->Delete(idx);
+			args.Holder().As<Array>()->Delete(isolate->GetCurrentContext(), idx);
 			// set empty object.
 			obj = MQ_CreateObject();
 			_obj->SetInternalField(0, External::New(isolate, obj));
@@ -675,7 +703,7 @@ static void GetMaterialName(const Local<String> property, const PropertyCallback
 static void SetMaterialName(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
 	Isolate* isolate = info.GetIsolate();
 	MQMaterial obj = GetInternal<MQMaterial>(info);
-	obj->SetName(utf8ToSjis(*String::Utf8Value(value)).c_str());
+	obj->SetName(utf8ToSjis(*String::Utf8Value(isolate, value)).c_str());
 }
 
 static void GetMaterialColor(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
@@ -747,7 +775,7 @@ static void GetMaterialIndex(const Local<String> property, const PropertyCallbac
 static Handle<Object> MQMaterialWrap(Isolate* isolate, MQMaterial m, int index) {
 	Local<Value> args[] = { External::New(isolate, m) };
 	Local<Object> obj = isolate->GetCurrentContext()->Global()
-		->Get(UTF8("MQMaterial")).As<Function>()->CallAsConstructor(1, args).As<Object>();
+		->Get(UTF8("MQMaterial")).As<Function>()->CallAsConstructor(isolate->GetCurrentContext(), 1, args).ToLocalChecked().As<Object>();
 	return obj;
 }
 
@@ -760,7 +788,7 @@ static void MQMaterialConstructor(const FunctionCallbackInfo<Value>& args) {
 	} else {
 		MQMaterial obj = MQ_CreateMaterial();
 		if (args.kArgsLength >= 1 && args[0]->IsString()) {
-			obj->SetName(utf8ToSjis(*String::Utf8Value(args[0])).c_str());
+			obj->SetName(utf8ToSjis(*String::Utf8Value(isolate, args[0])).c_str());
 		} else {
 			MQDocument doc = static_cast<MQDocument>(args.Data().As<External>()->Value());
 			char name[256];
@@ -795,8 +823,8 @@ static void DeleteMaterial(const FunctionCallbackInfo<Value>& args) {
 	MQDocument doc = static_cast<MQDocument>(args.Data().As<External>()->Value());
 
 	if (args[0]->IsInt32()) {
-		doc->DeleteMaterial(args[0]->Int32Value());
-		args.Holder().As<Array>()->Delete(args[0]->Int32Value());
+		doc->DeleteMaterial(get_or_default1(args[0], 0U, isolate));
+		args.Holder().As<Array>()->Delete(isolate->GetCurrentContext(), get_or_default1(args[0], 0U, isolate));
 	} else {
 		Local<Object> _obj = args[0].As<Object>();
 		CHECK_TYPE_OR_RETURN(_obj, "MQMaterial");
@@ -806,7 +834,7 @@ static void DeleteMaterial(const FunctionCallbackInfo<Value>& args) {
 		int i = findMaterialIndex(obj, doc);
 		if (i >= 0) {
 			doc->DeleteMaterial(i);
-			args.Holder().As<Array>()->Delete(i);
+			args.Holder().As<Array>()->Delete(isolate->GetCurrentContext(), i);
 
 			// set empty object.
 			obj = MQ_CreateMaterial();
@@ -850,12 +878,13 @@ static void GetCameraPosition(const Local<String> property, const PropertyCallba
 
 static void SetCameraPosition(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
 	Isolate* isolate = info.GetIsolate();
+	auto context = isolate->GetCurrentContext();
 	MQScene s = GetInternal<MQScene>(info);
 
 	MQPoint p;
-	p.x = (float)value.As<Object>()->Get(UTF8("x")).As<Number>()->NumberValue();
-	p.y = (float)value.As<Object>()->Get(UTF8("y")).As<Number>()->NumberValue();
-	p.z = (float)value.As<Object>()->Get(UTF8("z")).As<Number>()->NumberValue();
+	p.x = (float)get_or_default(value.As<Object>(), "x", 0.0, isolate);
+	p.y = (float)get_or_default(value.As<Object>(), "y", 0.0, isolate);
+	p.z = (float)get_or_default(value.As<Object>(), "z", 0.0, isolate);
 	s->SetCameraPosition(p);
 }
 
@@ -877,9 +906,9 @@ static void SetCameraLookAt(const Local<String> property, Local<Value> value, co
 	MQScene s = GetInternal<MQScene>(info);
 
 	MQPoint p;
-	p.x = (float)value.As<Object>()->Get(UTF8("x")).As<Number>()->NumberValue();
-	p.y = (float)value.As<Object>()->Get(UTF8("y")).As<Number>()->NumberValue();
-	p.z = (float)value.As<Object>()->Get(UTF8("z")).As<Number>()->NumberValue();
+	p.x = (float)get_or_default(value.As<Object>(), "x", 0.0, isolate);
+	p.y = (float)get_or_default(value.As<Object>(), "y", 0.0, isolate);
+	p.z = (float)get_or_default(value.As<Object>(), "z", 0.0, isolate);
 	s->SetLookAtPosition(p);
 }
 
@@ -901,9 +930,9 @@ static void SetCameraAngle(const Local<String> property, Local<Value> value, con
 	MQScene s = GetInternal<MQScene>(info);
 
 	MQAngle p;
-	p.bank = (float)value.As<Object>()->Get(UTF8("bank")).As<Number>()->NumberValue();
-	p.head = (float)value.As<Object>()->Get(UTF8("head")).As<Number>()->NumberValue();
-	p.pitch = (float)value.As<Object>()->Get(UTF8("pitch")).As<Number>()->NumberValue();
+	p.bank = (float)get_or_default(value.As<Object>(), "bank", 0.0, isolate);
+	p.head = (float)get_or_default(value.As<Object>(), "head", 0.0, isolate);
+	p.pitch = (float)get_or_default(value.As<Object>(), "pitch", 0.0, isolate);
 	s->SetCameraAngle(p);
 }
 
@@ -925,9 +954,9 @@ static void SetRotationCenter(const Local<String> property, Local<Value> value, 
 	MQScene s = GetInternal<MQScene>(info);
 
 	MQPoint p;
-	p.x = (float)value.As<Object>()->Get(UTF8("x")).As<Number>()->NumberValue();
-	p.y = (float)value.As<Object>()->Get(UTF8("y")).As<Number>()->NumberValue();
-	p.z = (float)value.As<Object>()->Get(UTF8("z")).As<Number>()->NumberValue();
+	p.x = (float)get_or_default(value.As<Object>(), "x", 0.0, isolate);
+	p.y = (float)get_or_default(value.As<Object>(), "y", 0.0, isolate);
+	p.z = (float)get_or_default(value.As<Object>(), "z", 0.0, isolate);
 	s->SetRotationCenter(p);
 }
 
@@ -941,8 +970,8 @@ static void GetFOV(const Local<String> property, const PropertyCallbackInfo<Valu
 static void SetFOV(const Local<String> property, Local<Value> value, const PropertyCallbackInfo<void>& info) {
 	Isolate* isolate = info.GetIsolate();
 	MQScene s = GetInternal<MQScene>(info);
-
-	s->SetFOV((float)value.As<Number>()->NumberValue());
+	
+	s->SetFOV((float)get_or_default1(value, 0.0, isolate));
 }
 
 static void GetZoom(const Local<String> property, const PropertyCallbackInfo<Value>& info) {
@@ -956,7 +985,7 @@ static void SetZoom(const Local<String> property, Local<Value> value, const Prop
 	Isolate* isolate = info.GetIsolate();
 	MQScene s = GetInternal<MQScene>(info);
 
-	s->SetZoom((float)value.As<Number>()->NumberValue());
+	s->SetZoom((float)get_or_default1(value.As<Number>(), 0.0, isolate));
 }
 
 static void GetScene(const Local<Name> property, const PropertyCallbackInfo<Value>& info) {
@@ -1004,8 +1033,8 @@ static void IsVertexSelected(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
 	MQDocument doc = GetInternal<MQDocument>(args);
 
-	uint32_t objIndex = args[0].As<Integer>()->Uint32Value();
-	uint32_t index = args[1].As<Integer>()->Uint32Value();
+	uint32_t objIndex = get_or_default1(args[0], 0U, isolate);
+	uint32_t index = get_or_default1(args[1], 0U, isolate);
 	args.GetReturnValue().Set(doc->IsSelectVertex(objIndex, index) != 0);
 }
 
@@ -1013,9 +1042,9 @@ static void SetVertexSelected(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
 	MQDocument doc = GetInternal<MQDocument>(args);
 
-	uint32_t objIndex = args[0].As<Integer>()->Uint32Value();
-	uint32_t index = args[1].As<Integer>()->Uint32Value();
-	bool selected = args[2].As<Boolean>()->BooleanValue();
+	uint32_t objIndex = get_or_default1(args[0], 0U, isolate);
+	uint32_t index = get_or_default1(args[1], 0U, isolate);
+	bool selected = get_or_default1(args[2], false, isolate);
 
 	if (selected) {
 		doc->AddSelectVertex(objIndex, index);
@@ -1029,8 +1058,8 @@ static void IsFaceSelected(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
 	MQDocument doc = GetInternal<MQDocument>(args);
 
-	uint32_t objIndex = args[0].As<Integer>()->Uint32Value();
-	uint32_t index = args[1].As<Integer>()->Uint32Value();
+	uint32_t objIndex = get_or_default1(args[0], 0U, isolate);
+	uint32_t index = get_or_default1(args[1], 0U, isolate);
 	args.GetReturnValue().Set(doc->IsSelectFace(objIndex, index) != 0);
 }
 
@@ -1038,9 +1067,9 @@ static void SetFaceSelected(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
 	MQDocument doc = GetInternal<MQDocument>(args);
 
-	uint32_t objIndex = args[0].As<Integer>()->Uint32Value();
-	uint32_t index = args[1].As<Integer>()->Uint32Value();
-	bool selected = args[2].As<Boolean>()->BooleanValue();
+	uint32_t objIndex = get_or_default1(args[0], 0U, isolate);
+	uint32_t index = get_or_default1(args[1], 0U, isolate);
+	bool selected = get_or_default1(args[2], false, isolate);
 
 	if (selected) {
 		doc->AddSelectFace(objIndex, index);

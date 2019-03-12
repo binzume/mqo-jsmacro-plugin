@@ -12,7 +12,6 @@
 #include <codecvt>
 
 #include "MQBasePlugin.h"
-#include "MQ3DLib.h"
 #include "JSMacroWindow.h"
 
 #include "libplatform/libplatform.h"
@@ -130,11 +129,11 @@ public:
 };
 
 void debug_log(const std::string s, int tag = 1) {
+	std::ofstream fout("C:/logs/jsmacro.log", std::ios::app);
+	fout << s << std::endl;
+	fout.close();
 	JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
 	plugin->AddMessage(s, tag);
-	// std::ofstream fout("C:/tmp/jsmacro.log", std::ios::app);
-	// fout << s << std::endl;
-	// fout.close();
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -142,6 +141,7 @@ void debug_log(const std::string s, int tag = 1) {
 //---------------------------------------------------------------------------------------------------------------------
 
 static void WriteFile(const v8::FunctionCallbackInfo<v8::Value>& args) {
+	Isolate* isolate = args.GetIsolate();
 	std::stringstream ss;
 	bool first = true;
 	for (int i = 0; i < args.Length(); i++) {
@@ -152,7 +152,7 @@ static void WriteFile(const v8::FunctionCallbackInfo<v8::Value>& args) {
 		else {
 			ss << " ";
 		}
-		v8::String::Utf8Value str(args[i]);
+		v8::String::Utf8Value str(isolate, args[i]);
 		ss << (*str ? *str : "[NOT_STRING]");
 	}
 
@@ -164,7 +164,7 @@ static void LoadScript(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
 	if (args.kArgsLength >= 1) {
 		JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
-		String::Utf8Value path(args[0].As<String>());
+		String::Utf8Value path(isolate, args[0].As<String>());
 		debug_log("load " + plugin->GetScriptDir() + *path);
 		std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
 		std::ifstream jsfile(converter.from_bytes(plugin->GetScriptDir() + *path));
@@ -187,8 +187,8 @@ static void ExecScriptString(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
 	if (args.kArgsLength >= 1) {
 		JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
-		String::Utf8Value code(args[0].As<String>());
-		String::Utf8Value path(args[1].As<String>());
+		String::Utf8Value code(isolate, args[0].As<String>());
+		String::Utf8Value path(isolate, args[1].As<String>());
 
 		auto ret = plugin->ExecScriptCurrentContext(*code, *path);
 		if (!ret.IsEmpty()) {
@@ -203,7 +203,7 @@ static void ShowWindow(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
 	JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
 	if (args.kArgsLength >= 1) {
-		plugin->window->SetVisible(args[0].As<Boolean>()->BooleanValue());
+		plugin->window->SetVisible(args[0].As<Boolean>()->Value());
 	} else {
 		plugin->window->SetVisible(true);
 	}
@@ -228,11 +228,11 @@ VOID CALLBACK JSMacroPlugin::TickTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEven
 void JSMacroPlugin::SetNextTick(const FunctionCallbackInfo<Value>& args) {
 	Isolate* isolate = args.GetIsolate();
 	JSMacroPlugin *plugin = static_cast<JSMacroPlugin*>(GetPluginClass());
-	plugin->window->SetVisible(args[0].As<Boolean>()->BooleanValue());
+	plugin->window->SetVisible(args[0].As<Boolean>()->Value());
 	plugin->jsContext->nextTickFun.Reset(isolate, args[0].As<Function>());
 	uint32_t timerMs = 10;
 	if (args.kArgsLength > 1) {
-		timerMs = args[1].As<Integer>()->Uint32Value();
+		timerMs = (uint32_t)args[1].As<Integer>()->Value();
 	}
 	if (plugin->jsContext->tickTimerId) {
 		KillTimer(NULL, plugin->jsContext->tickTimerId);
@@ -321,12 +321,15 @@ const char *JSMacroPlugin::EnumString(void) {
 //---------------------------------------------------------------------------------------------------------------------
 BOOL JSMacroPlugin::Initialize()
 {
-	V8::InitializeICUDefaultLocation("C:/tmp/test");
-	// V8::InitializeExternalStartupData("C:/tmp/test");
+	char cwd[1024];
+	GetModuleFileName(hInstance, cwd, sizeof cwd);
+	debug_log(cwd);
 
-	platform = platform::CreateDefaultPlatform();
-	V8::InitializePlatform(platform);
-	V8::Initialize();
+	// v8::V8::InitializeICUDefaultLocation(cwd);
+	v8::V8::InitializeExternalStartupData(cwd);
+	platform = v8::platform::CreateDefaultPlatform();
+	v8::V8::InitializePlatform(platform);
+	v8::V8::Initialize();
 
 	create_params.array_buffer_allocator = v8::ArrayBuffer::Allocator::NewDefaultAllocator();
 	isolate = Isolate::New(create_params);
@@ -391,17 +394,17 @@ bool JSMacroPlugin::ExecuteCallback(MQDocument doc, void *option)
 {
 	if (jsContext != nullptr && !jsContext->nextTickFun.IsEmpty()) {
 		EscapableHandleScope handleScope(isolate);
-		TryCatch trycatch;
+		TryCatch trycatch(isolate);
 
 		auto fun = jsContext->nextTickFun.Get(isolate);
 		jsContext->nextTickFun.Reset();
 		auto result = fun->Call(Null(isolate), 0, nullptr);
 		if (result.IsEmpty()) {
 			Handle<Value> exception = trycatch.Exception();
-			String::Utf8Value exception_str(exception);
+			String::Utf8Value exception_str(isolate, exception);
 			Handle<Message> message = Exception::CreateMessage(isolate, exception);
 			std::stringstream ss;
-			ss << *exception_str << " Line:" << message->GetLineNumber() << " (" << currentScriptPath << ")";
+			ss << *exception_str << " Line:" << message->GetLineNumber(isolate->GetCurrentContext()).ToChecked() << " (" << currentScriptPath << ")";
 			debug_log(ss.str(), 2);
 		}
 		return true;
@@ -423,18 +426,18 @@ MaybeLocal<Value> JSMacroPlugin::ExecScriptCurrentContext(const std::string &sou
 MaybeLocal<Value> JsContext::ExecScript(const std::string &source, const std::string &maybepath) {
 	Local<Context> context = isolate->GetCurrentContext();
 	EscapableHandleScope handleScope(isolate);
-	TryCatch trycatch;
+	TryCatch trycatch(isolate);
 
 	// Compile the source code.
 	MaybeLocal<Script> script = Script::Compile(context, UTF8(source.c_str()), &ScriptOrigin(UTF8(maybepath.c_str())));
 	if (script.IsEmpty()) {
 		debug_log("COMPILE ERROR:", 2);
 		Handle<Value> exception = trycatch.Exception();
-		String::Utf8Value exception_str(exception);
+		String::Utf8Value exception_str(isolate, exception);
 		Handle<Message> message = Exception::CreateMessage(isolate, exception);
 		std::stringstream ss;
-		String::Utf8Value scriptName(message->GetScriptOrigin().ResourceName());
-		ss << *exception_str << " Line:" << message->GetLineNumber() << " (" << *scriptName << ")";
+		String::Utf8Value scriptName(isolate, message->GetScriptOrigin().ResourceName());
+		ss << *exception_str << " Line:" << message->GetLineNumber(isolate->GetCurrentContext()).ToChecked() << " (" << *scriptName << ")";
 		//ss << *exception_str << " Line:" << message->GetLineNumber() << " (" << maybepath << ")";
 		debug_log(ss.str(), 2);
 	} else {
@@ -442,12 +445,12 @@ MaybeLocal<Value> JsContext::ExecScript(const std::string &source, const std::st
 		auto ret = script.ToLocalChecked()->Run(context);
 		if (ret.IsEmpty()) {
 			Handle<Value> exception = trycatch.Exception();
-			String::Utf8Value exception_str(exception);
+			String::Utf8Value exception_str(isolate, exception);
 			Handle<Message> message = Exception::CreateMessage(isolate, exception);
 			std::stringstream ss;
 
-			String::Utf8Value scriptName(message->GetScriptOrigin().ResourceName());
-			ss << *exception_str <<  " Line:" << message->GetLineNumber() << " (" << *scriptName << ")";
+			String::Utf8Value scriptName(isolate, message->GetScriptOrigin().ResourceName());
+			ss << *exception_str <<  " Line:" << message->GetLineNumber(isolate->GetCurrentContext()).ToChecked() << " (" << *scriptName << ")";
 			debug_log(ss.str(), 2);
 			return MaybeLocal<Value>();
 		}
@@ -479,7 +482,7 @@ JsContext* JSMacroPlugin::GetJsContext(MQDocument doc) {
 			unsafe->Set(UTF8("child_process"), ChildProcessTemplate(isolate));
 			global->Set(UTF8("unsafe"), unsafe->NewInstance());
 			jsContext->ExecScript(buffer.str(), "core.js");
-			global->Delete(UTF8("unsafe")); // core.js only
+			global->Delete(isolate->GetCurrentContext(), UTF8("unsafe")); // core.js only
 		}
 	}
 	return jsContext;
@@ -506,15 +509,15 @@ void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
 			debug_log("ok.");
 		}
 	}
-	isolate->IdleNotification(100);
+//	isolate->IdleNotification(100);
 }
 
 void JSMacroPlugin::ExecScriptString(MQDocument doc, const std::string &code) {
 	debug_log("> "+ code);
 	auto ret = GetJsContext(doc)->ExecScript(code);
 	if (!ret.IsEmpty()) {
-		v8::String::Utf8Value resultStr(ret.ToLocalChecked());
+		v8::String::Utf8Value resultStr(isolate, ret.ToLocalChecked());
 		debug_log(*resultStr);
 	}
-	isolate->IdleNotification(100);
+//	isolate->IdleNotification(100);
 };

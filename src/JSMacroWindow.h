@@ -30,7 +30,7 @@ private:
 	MQEdit *m_FilePathEdit;
 	MQEdit *m_PresetEdit[PRESET_SCRIPT_COUNT];
 	MQListBox *m_MessageList;
-	static BOOL ExecuteProc(MQDocument doc, void *option);
+	static BOOL MQAPICALL ExecuteProc(MQDocument doc, void *option);
 	BOOL OnHide(MQWidgetBase *sender, MQDocument doc);
 	BOOL onDrawListItem(MQWidgetBase * sender, MQDocument doc, MQListBoxDrawItemParam & param);
 	BOOL OnClearClick(MQWidgetBase *sender, MQDocument doc);
