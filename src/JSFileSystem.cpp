@@ -1,159 +1,172 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <vector>
+#include <fstream>
 #include <sstream>
 #include <codecvt>
-#include "libplatform/libplatform.h"
-#include "v8.h"
 
-
-//---------------------------------------------------------------------------------------------------------------------
-// Utils
-//---------------------------------------------------------------------------------------------------------------------
-#define UTF8(s) v8::String::NewFromUtf8(isolate, s, v8::NewStringType::kNormal).ToLocalChecked()
-void debug_log(const std::string s, int tag = 1);
-
+#include "Utils.h"
+#include "qjsutils.h"
 
 //---------------------------------------------------------------------------------------------------------------------
 // File System
 //---------------------------------------------------------------------------------------------------------------------
-using namespace v8;
 
-static void ReadFileSync(const FunctionCallbackInfo<Value>& args) {
-	Isolate* isolate = args.GetIsolate();
 
-	if (!args.Holder()->Get(UTF8("path"))->IsString()) {
-		isolate->ThrowException(Exception::TypeError(UTF8("invalid path")));
-		return;
-	}
-	String::Utf8Value path(isolate, args.Holder()->Get(UTF8("path")).As<String>());
+class JSFile {
+  std::string path; // utf8 string
+  bool writable;
+public:
+  JSFile(const std::string &_path, bool _writable) : path(_path), writable(_writable) {}
+
+  static JSClassID class_id;
+  static const JSCFunctionListEntry proto_funcs[];
+
+  std::string GetPath() {
+	return path;
+  }
+  bool IsWritable() {
+	return writable;
+  }
+
+  JSValue ReadFileSync(JSContext* ctx) {
 	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
 
-	std::ifstream jsfile(converter.from_bytes(*path));
+	std::ifstream jsfile(converter.from_bytes(path));
 	std::stringstream buffer;
 	buffer << jsfile.rdbuf();
 	jsfile.close();
 	if (jsfile.fail()) {
-		isolate->ThrowException(Exception::Error(UTF8("read failed.")));
-		return;
+	  JS_ThrowInternalError(ctx, "read failed.");
+	  return JS_EXCEPTION;
 	}
-	args.GetReturnValue().Set(UTF8(buffer.str().c_str()));
-}
+	return to_jsvalue(ctx, buffer.str());
+  }
 
-static void WriteFileSync(const FunctionCallbackInfo<Value>& args) {
-	Isolate* isolate = args.GetIsolate();
-
-	if (!args[0]->IsString()) {
-		isolate->ThrowException(Exception::TypeError(UTF8("invalid data")));
-		return;
-	}
-
-	if (!args.Holder()->Get(UTF8("path"))->IsString()) {
-		isolate->ThrowException(Exception::TypeError(UTF8("invalid path")));
-		return;
-	}
-	String::Utf8Value path(isolate, args.Holder()->Get(UTF8("path")).As<String>());
-	String::Utf8Value data(isolate, args[0].As<String>());
+  JSValue WriteFileSync(JSContext* ctx, std::string data, JSValue flags) {
+	ValueHolder f(ctx, flags, true);
 
 	int mode = std::ofstream::binary;
-	if (args[1].As<Object>()->Get(UTF8("flag"))->Equals(isolate->GetCurrentContext(), UTF8("a")).ToChecked()) {
-		mode |= std::ofstream::app;
+	if (f["mode"].to < std::string >() == "a") {
+	  mode |= std::ofstream::app;
 	}
 
 	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-	std::ofstream jsfile(converter.from_bytes(*path), mode);
-	jsfile << *data;
+	std::ofstream jsfile(converter.from_bytes(path), mode);
+	jsfile << data;
 	jsfile.close();
 	if (jsfile.fail()) {
-		isolate->ThrowException(Exception::Error(UTF8("write failed.")));
-		return;
+	  JS_ThrowInternalError(ctx, "write failed.");
+	  return JS_EXCEPTION;
 	}
-	args.GetReturnValue().Set(data.length());
+
+	return to_jsvalue(ctx, data.length());
+  }
+};
+
+JSClassID JSFile::class_id;
+
+const JSCFunctionListEntry JSFile::proto_funcs[] = {
+	function_entry_getset("path", method_wrapper_getter<&GetPath>),
+	function_entry_getset("writable", method_wrapper_getter<&IsWritable>),
+	function_entry("read", 0, method_wrapper<&ReadFileSync>),
+	function_entry("write", 0, method_wrapper<&WriteFileSync>),
+};
+
+JSValue NewFile(JSContext* ctx, const std::string& path, bool writable) {
+  JSValue obj = JS_NewObjectClass(ctx, JSFile::class_id);
+  if (JS_IsException(obj))
+	return obj;
+  JS_SetOpaque(obj, new JSFile(path, writable));
+  return obj;
 }
 
-Local<ObjectTemplate> NewFile(Isolate* isolate, const std::string &path, bool writable) {
-	auto file = ObjectTemplate::New(isolate);
-	file->Set(UTF8("path"), UTF8(path.c_str()), PropertyAttribute::ReadOnly);
-	file->Set(UTF8("read"), FunctionTemplate::New(isolate, ReadFileSync));
-	if (writable) {
-		file->Set(UTF8("write"), FunctionTemplate::New(isolate, WriteFileSync));
+static JSValue ReadFile(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    if (argc < 1) {
+    	return JS_EXCEPTION;
+    }
+    ValueHolder path(ctx, argv[0]);
+	if (!path.IsString()) {
+	  JS_ThrowTypeError(ctx, "invalid path");
+	  return JS_EXCEPTION;
 	}
-	return file;
-}
 
-static void ReadFile(const FunctionCallbackInfo<Value>& args) {
-	Isolate* isolate = args.GetIsolate();
-
-	if (!args[0]->IsString()) {
-		isolate->ThrowException(Exception::TypeError(UTF8("invalid path")));
-		return;
-	}
-	String::Utf8Value path(isolate, args[0].As<String>());
 	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
 
-	std::ifstream jsfile(converter.from_bytes(*path));
+	std::ifstream jsfile(converter.from_bytes(path.to<std::string>()));
 	std::stringstream buffer;
 	buffer << jsfile.rdbuf();
 	jsfile.close();
 	if (jsfile.fail()) {
-		isolate->ThrowException(Exception::Error(UTF8("read failed.")));
-		return;
+		JS_ThrowInternalError(ctx, "read failed.");
+		return JS_EXCEPTION;
 	}
-	args.GetReturnValue().Set(UTF8(buffer.str().c_str()));
+	return to_jsvalue(ctx, buffer.str());
 }
 
-static void WriteFile(const FunctionCallbackInfo<Value>& args) {
-	Isolate* isolate = args.GetIsolate();
-
-	if (!args[0]->IsString()) {
-		isolate->ThrowException(Exception::TypeError(UTF8("invalid path")));
-		return;
+static JSValue WriteFile(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    if (argc < 2) {
+    	return JS_EXCEPTION;
+    }
+    ValueHolder path(ctx, argv[0]);
+	ValueHolder data(ctx, argv[1]);
+	if (!path.IsString()) {
+	  JS_ThrowTypeError(ctx, "invalid path");
+	  return JS_EXCEPTION;
 	}
-	if (!args[1]->IsString()) {
-		isolate->ThrowException(Exception::TypeError(UTF8("invalid data")));
-		return;
-	}
-	String::Utf8Value path(isolate, args[0].As<String>());
-	String::Utf8Value data(isolate, args[1].As<String>());
 
 	int mode = std::ofstream::binary;
-	if (args[2].As<Object>()->Get(UTF8("flag"))->Equals(isolate->GetCurrentContext(), UTF8("a")).ToChecked()) {
+	if (argc > 2 && JS_IsObject(argv[2])) {
+	  ValueHolder options(ctx, argv[2]);
+	  if (options["flag"].to < std::string >() == "a") {
 		mode |= std::ofstream::app;
+	  }
 	}
 
 	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-	std::ofstream jsfile(converter.from_bytes(*path), mode);
-	jsfile << *data;
+	std::ofstream jsfile(converter.from_bytes(path.to<std::string>()), mode);
+	jsfile << data.to<std::string>();
 	jsfile.close();
 	if (jsfile.fail()) {
-		isolate->ThrowException(Exception::Error(UTF8("write failed.")));
-		return;
+		JS_ThrowInternalError(ctx, "write failed.");
+		return JS_EXCEPTION;
 	}
-	args.GetReturnValue().Set(data.length());
+	return to_jsvalue(ctx, data.Length());
 }
 
 
-static void OpenFile(const FunctionCallbackInfo<Value>& args) {
-	Isolate* isolate = args.GetIsolate();
-
-	if (!args[0]->IsString()) {
-		isolate->ThrowException(Exception::TypeError(UTF8("invalid path")));
-		return;
-	}
-	String::Utf8Value path(isolate, args[0].As<String>());
-
-	bool write = false;
-	if (args[2].As<Object>()->Get(UTF8("flag"))->Equals(isolate->GetCurrentContext(), UTF8("w")).ToChecked()) {
-		write = true;
+static JSValue OpenFile(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    if (argc < 1) {
+    	return JS_EXCEPTION;
+    }
+    ValueHolder path(ctx, argv[0]);
+	ValueHolder write(ctx, argv[1]);
+	if (!path.IsString()) {
+	  JS_ThrowTypeError(ctx, "invalid path");
+	  return JS_EXCEPTION;
 	}
 
-	args.GetReturnValue().Set(NewFile(isolate, *path, write)->NewInstance());
+	return NewFile(ctx, path.to<std::string>(), write.to<bool>());
 }
 
-Local<ObjectTemplate> FileSystemTemplate(Isolate* isolate) {
-	auto fs = ObjectTemplate::New(isolate);
-	fs->Set(UTF8("open"), FunctionTemplate::New(isolate, OpenFile));
-	fs->Set(UTF8("readFile"), FunctionTemplate::New(isolate, ReadFile));
-	fs->Set(UTF8("writeFile"), FunctionTemplate::New(isolate, WriteFile));
-	return fs;
+const JSCFunctionListEntry fs_funcs[] = {
+	function_entry("open", 2, OpenFile),
+	function_entry("readFile", 2, ReadFile),
+	function_entry("writeFile", 2, WriteFile),
+};
+
+static int FsModuleInit(JSContext* ctx, JSModuleDef* m)
+{
+  NewClassProto<JSFile>(ctx, "File");
+  return JS_SetModuleExportList(ctx, m, fs_funcs, COUNTOF(fs_funcs));
+}
+
+JSModuleDef* InitFsModule(JSContext* ctx) {
+  JSModuleDef* m;
+  m = JS_NewCModule(ctx, "fs", FsModuleInit);
+  if (!m) {
+	return NULL;
+  }
+  JS_AddModuleExportList(ctx, m, fs_funcs, COUNTOF(fs_funcs));
+  return m;
 }

@@ -3,26 +3,25 @@
 #include <array>
 #include <sstream>
 #include <codecvt>
-#include "libplatform/libplatform.h"
-#include "v8.h"
-#include "Utils.h"
 #include <windows.h>
 
+#include "Utils.h"
+#include "qjsutils.h"
 
 //---------------------------------------------------------------------------------------------------------------------
 // Shell
 //---------------------------------------------------------------------------------------------------------------------
 
-using namespace v8;
+static JSValue ExecSync(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
 
-static void ExecSync(const FunctionCallbackInfo<Value>& args) {
-	Isolate* isolate = args.GetIsolate();
-
-	if (!args[0]->IsString()) {
-		isolate->ThrowException(Exception::TypeError(UTF8("invalid path")));
-		return;
-	}
-	String::Utf8Value cmd(isolate, args[0].As<String>());
+  if (argc < 1) {
+	return JS_EXCEPTION;
+  }
+  ValueHolder cmd(ctx, argv[0]);
+  if (!cmd.IsString()) {
+	JS_ThrowTypeError(ctx, "invalid path");
+	return JS_EXCEPTION;
+  }
 
 	SECURITY_ATTRIBUTES	sa = { 0 };
 	HANDLE read, write;
@@ -30,8 +29,8 @@ static void ExecSync(const FunctionCallbackInfo<Value>& args) {
 	sa.bInheritHandle = TRUE;
 
 	if (!CreatePipe(&read, &write, &sa, 0)) {
-		isolate->ThrowException(Exception::Error(UTF8("CreatePipe error")));
-		return;
+	  JS_ThrowInternalError(ctx, "CreatePipe error");
+		return JS_EXCEPTION;
 	}
 
 	STARTUPINFO si = { 0 };
@@ -40,14 +39,14 @@ static void ExecSync(const FunctionCallbackInfo<Value>& args) {
 	si.dwFlags = STARTF_USESTDHANDLES;
 	si.hStdOutput = write;
 	si.hStdError = write;
-	if (!CreateProcess(NULL, *cmd, NULL, NULL, TRUE, DETACHED_PROCESS, NULL, NULL, &si, &pi)) {
-		isolate->ThrowException(Exception::Error(UTF8("CreateProcess error")));
-		return;
+	if (!CreateProcess(NULL, const_cast<LPSTR>(cmd.to<std::string>().c_str()), NULL, NULL, TRUE, DETACHED_PROCESS, NULL, NULL, &si, &pi)) {
+	  JS_ThrowInternalError(ctx, "CreateProcess error");
+	  return JS_EXCEPTION;
 	}
 
 	if (WaitForSingleObject(pi.hProcess, INFINITE) != WAIT_OBJECT_0) {
-		isolate->ThrowException(Exception::Error(UTF8("WaitForSingleObject error")));
-		return;
+	  JS_ThrowInternalError(ctx, "WaitForSingleObject error");
+	  return JS_EXCEPTION;
 	}
 
 	CloseHandle(pi.hProcess);
@@ -63,18 +62,19 @@ static void ExecSync(const FunctionCallbackInfo<Value>& args) {
 
 	CloseHandle(read);
 
-	args.GetReturnValue().Set(UTF8(result.c_str()));
+	return to_jsvalue(ctx, result);
 }
 
 
-static void Exec(const FunctionCallbackInfo<Value>& args) {
-	Isolate* isolate = args.GetIsolate();
-
-	if (!args[0]->IsString()) {
-		isolate->ThrowException(Exception::TypeError(UTF8("invalid path")));
-		return;
+static JSValue Exec(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    if (argc < 1) {
+    	return JS_EXCEPTION;
+    }
+    ValueHolder cmd(ctx, argv[0]);
+	if (!cmd.IsString()) {
+	  JS_ThrowTypeError(ctx, "invalid path");
+	  return JS_EXCEPTION;
 	}
-	String::Utf8Value cmd(isolate, args[0].As<String>());
 
 	SECURITY_ATTRIBUTES	sa = { 0 };
 	HANDLE read, write;
@@ -82,26 +82,41 @@ static void Exec(const FunctionCallbackInfo<Value>& args) {
 	sa.bInheritHandle = TRUE;
 
 	if (!CreatePipe(&read, &write, &sa, 0)) {
-		isolate->ThrowException(Exception::Error(UTF8("CreatePipe error")));
-		return;
+	  JS_ThrowInternalError(ctx, "CreatePipe error");
+	  return JS_EXCEPTION;
 	}
 
 	STARTUPINFO si = { 0 };
 	PROCESS_INFORMATION pi = { 0 };
 	si.cb = sizeof(STARTUPINFO);
 	si.hStdOutput = write;
-	if (!CreateProcess(NULL, *cmd, NULL, NULL, TRUE, DETACHED_PROCESS, NULL, NULL, &si, &pi)) {
-		isolate->ThrowException(Exception::Error(UTF8("CreateProcess error")));
-		return;
+	if (!CreateProcess(NULL, const_cast<LPSTR>(cmd.to<std::string>().c_str()), NULL, NULL, TRUE, DETACHED_PROCESS, NULL, NULL, &si, &pi)) {
+	  JS_ThrowInternalError(ctx, "CreateProcess error");
+		return JS_EXCEPTION;
 	}
-
 	// TODO
-	args.GetReturnValue().Set((int)pi.dwProcessId);
+	CloseHandle(pi.hProcess);
+	CloseHandle(pi.hThread);
+	CloseHandle(write);
+	return to_jsvalue(ctx, (int)pi.dwProcessId);
 }
 
-Local<ObjectTemplate> ChildProcessTemplate(Isolate* isolate) {
-	auto t = ObjectTemplate::New(isolate);
-	t->Set(UTF8("execSync"), FunctionTemplate::New(isolate, ExecSync));
-	t->Set(UTF8("exec"), FunctionTemplate::New(isolate, Exec));
-	return t;
+const JSCFunctionListEntry process_funcs[] = {
+	function_entry("execSync", 2, ExecSync),
+	function_entry("exec", 2, Exec),
+};
+
+static int ProcessModuleInit(JSContext* ctx, JSModuleDef* m)
+{
+  return JS_SetModuleExportList(ctx, m, process_funcs, COUNTOF(process_funcs));
+}
+
+JSModuleDef* InitChildProcessModule(JSContext* ctx) {
+  JSModuleDef* m;
+  m = JS_NewCModule(ctx, "child_process", ProcessModuleInit);
+  if (!m) {
+	return NULL;
+  }
+  JS_AddModuleExportList(ctx, m, process_funcs, COUNTOF(process_funcs));
+  return m;
 }

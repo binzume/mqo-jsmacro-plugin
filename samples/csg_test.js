@@ -3,6 +3,8 @@
 // csg.js : https://evanw.github.io/csg.js/
 module.include("./csg.js");
 
+var geom = module.require("geom");
+
 // CSG.Plane.EPSILON = 1e-6;
 var epsilon = 1e-10;
 
@@ -41,6 +43,10 @@ function collinear(v0, v1, v2) {
 	return d < epsilon;
 }
 
+function veq(v0, v1) {
+	return v1.pos.minus(v0.pos).length() < epsilon;
+}
+
 function overwrap(a1, a2, b1, b2) {
 	let a1a2 = a2.pos.minus(a1.pos);
 	let b1b2 = b2.pos.minus(b1.pos);
@@ -62,19 +68,24 @@ function overwrap(a1, a2, b1, b2) {
 }
 
 function toCSGPolygons(obj) {
+	let dummy = new CSG.Vector(0, 0, 0);
 	return obj.faces.reduce((acc, f) => {
 		if (!f || f.points.length < 3) return acc;
 		let points = f.points.map((i) => { return new CSG.Vector(obj.verts[i]) });
 		if (isConvexPolygon(points)) {
-			let n = new CSG.Vector(0, 0, 0);
-			let vs = points.map((p) => { return new CSG.Vertex(p, n); });
-			acc.push(new CSG.Polygon(vs.reverse(), [f, obj]));
+			let vs = points.map((p) => { return new CSG.Vertex(p, dummy); }).reverse();
+			let p = new CSG.Polygon(vs, [f, obj]);
+			if (p.plane.w == p.plane.w) {
+				acc.push(p);
+			}
 		} else {
-			let n = new CSG.Vector(0, 0, 0);
 			let trpoints = document.triangulate(points).map((i) => { return points[i] });
 			for (let i = 0; i < trpoints.length / 3; i++) {
-				let vs = trpoints.slice(i * 3, i * 3 + 3).map((p) => { return new CSG.Vertex(p, n); });
-				acc.push(new CSG.Polygon(vs.reverse(), [f, obj]));
+				let vs = trpoints.slice(i * 3, i * 3 + 3).map((p) => { return new CSG.Vertex(p, dummy); }).reverse();
+				let p = new CSG.Polygon(vs, [f, obj]);
+				if (p.plane.w == p.plane.w) {
+					acc.push(p);
+				}
 			}
 		}
 		return acc;
@@ -89,6 +100,27 @@ function cleanEdge(vv) {
 			if (collinear(vv[k], vv[d], vv[(k + 2) % vv.length])) {
 				vv.splice(d, 1);
 				f = true;
+			}
+		}
+	} while (f);
+	return vv;
+	do {
+		var f = false;
+		var pp = new Map();
+		for (let k = 0; k < vv.length; k++) {
+			let id = vv[k].pos.toString();
+			if (pp.get(id)) {
+				let kk = pp.get(id);
+				if (veq(vv[k - 1], vv[kk + 1]) && veq(vv[(k + 1) % vv.length], vv[(kk + vv.length - 1) % vv.length])) {
+					// TODO: check intersect
+					console.log("remove:" + id);
+					vv.splice(k, 1);
+					vv.splice(kk, 1);
+					f = true;
+					break;
+				}
+			} else {
+				pp.set(id, k);
 			}
 		}
 	} while (f);
@@ -165,13 +197,15 @@ function getVerts(csg, pos) {
 	var t = csg.plane.normal.dot(pos) - csg.plane.w;
 	if (t < -CSG.Plane.EPSILON) {
 		return getVerts(csg.back, pos);
-	} else if (t > CSG.Plane.EPSILON) {
+	} else if (t > CSG.Plane.PSILON) {
 		return getVerts(csg.front, pos);
 	}
 	let verts = getVerts(csg.back, pos).concat(getVerts(csg.front, pos));
+	const threshold = CSG.Plane.EPSILON * CSG.Plane.EPSILON * 100;
 	csg.polygons.forEach(p => {
 		p.vertices.forEach(v => {
-			if (v.pos.minus(pos).length() < CSG.Plane.EPSILON * 5) {
+			var d = v.pos.minus(pos);
+			if (d.dot(d) < threshold) {
 				verts.push(v);
 			}
 		});
@@ -179,7 +213,7 @@ function getVerts(csg, pos) {
 	return verts;
 }
 
-function getVertIndex(pos, obj, csgNode, map) {
+function getVertIndex2(pos, obj, csgNode, map) {
 	let i = map.get(pos);
 	if (i === undefined) {
 		i = obj.verts.append(pos);
@@ -188,14 +222,29 @@ function getVertIndex(pos, obj, csgNode, map) {
 	return i;
 }
 
+
+function getVertIndex(pos, obj, csgNode, verts) {
+	const threshold = CSG.Plane.EPSILON * CSG.Plane.EPSILON * 100;
+	let v = verts.find(function (e) {
+		var d = e[0].minus(pos);
+		return d.dot(d) < threshold;
+	});
+	if (v !== undefined) {
+		return v[1];
+	}
+	let i = obj.verts.append(pos);
+	verts.push([pos, i]);
+	return i;
+}
+
 function csgToObject(dst, csg, mergeFaces, mergeVerts) {
 	let polygons = csg.clone().polygons;
-	let csgNode = new CSG.Node(polygons);
 	if (mergeFaces) {
 		polygons = mergePolygons(polygons);
 	}
 	if (mergeVerts) {
-		let vv = new Map();
+		let vv = [];
+		let csgNode = null; // new CSG.Node(polygons);
 		polygons.forEach((p) => {
 			let a = p.vertices.map((v) => getVertIndex(v.pos, dst, csgNode, vv));
 			dst.faces.append(a.reverse(), p.shared ? p.shared[0].material : null);
@@ -208,6 +257,15 @@ function csgToObject(dst, csg, mergeFaces, mergeVerts) {
 	}
 }
 
+function transformPolygons(polygons, mat) {
+	let n = new CSG.Vector(0, 0, 0);
+	return polygons.map((p) => {
+		return new CSG.Polygon(p.vertices.map((v) => {
+			return new CSG.Vertex(new CSG.Vector(mat.transform(v.pos)), n);
+		}), p.shared);
+	});
+}
+
 var functions = {};
 var methods = {};
 
@@ -216,47 +274,74 @@ functions["sphere"] = function (p) {
 }
 
 functions["cube"] = function (p) {
-	return CSG.cube({});
+	return CSG.cube({ radius: 0.5 });
+}
+
+functions["box"] = function (p) {
+	let polygons = CSG.cube({ radius: 0.5 }).polygons;
+	let mat = geom.Matrix.scaleMatrix(p[0] * 1, p[1] * 1, p[2] * 1);
+	return CSG.fromPolygons(transformPolygons(polygons, mat));
+}
+
+functions["cyl"] = function (p) { // [r, h, segments]
+	let l = p[1] || 1;
+	return CSG.cylinder({ slices: (p[2] || 32) | 0, radius: (p[0] || 1) * 1, start: [0, -l * 0.5, 0], end: [0, l * 0.5, 0] });
 }
 
 functions["cylinder"] = function (p) {
-	return CSG.cylinder({});
+	return CSG.cylinder({ slices: (p[1] || 32) | 0, radius: (p[0] || 1) * 1 });
 }
 
 methods["scale"] = function (polygons, p) {
-	var x = p[0] * 1.0;
-	var y = p[1] * 1.0;
-	var z = p[2] * 1.0;
-	polygons.forEach((p) => {
-		p.vertices.forEach((v) => {
-			v.pos = new CSG.Vector(v.pos.x * x, v.pos.y * y, v.pos.z * z);
-		});
-	});
-	return CSG.fromPolygons(polygons);
+	let mat = geom.Matrix.scaleMatrix(p[0] * 1, p[1] * 1, p[2] * 1);
+	return CSG.fromPolygons(transformPolygons(polygons, mat));
+}
+
+methods["mv"] = function (polygons, p) {
+	let mat = geom.Matrix.translateMatrix(p[0] * 1, p[1] * 1, p[2] * 1);
+	return CSG.fromPolygons(transformPolygons(polygons, mat));
 }
 
 methods["tr"] = function (polygons, p) {
-	var x = p[0] * 1.0;
-	var y = p[1] * 1.0;
-	var z = p[2] * 1.0;
-	polygons.forEach((p) => {
-		p.vertices.forEach((v) => {
-			v.pos = new CSG.Vector(v.pos.x + x, v.pos.y + y, v.pos.z + z);
-		});
-	});
-	return CSG.fromPolygons(polygons);
+	let mat = geom.Matrix.translateMatrix(p[0] * 1, p[1] * 1, p[2] * 1);
+	return CSG.fromPolygons(transformPolygons(polygons, mat));
 }
+
+methods["rotate"] = function (polygons, p) {
+	let mat = geom.Matrix.rotateMatrix(p[0] * 1, p[1] * 1, p[2] * 1, p[3] * 1);
+	return CSG.fromPolygons(transformPolygons(polygons, mat));
+}
+
+methods["rotateX"] = function (polygons, p) {
+	let mat = geom.Matrix.rotateMatrix(1, 0, 0, p[0] * 1);
+	return CSG.fromPolygons(transformPolygons(polygons, mat));
+}
+
+methods["rotateY"] = function (polygons, p) {
+	let mat = geom.Matrix.rotateMatrix(0, 1, 0, p[0] * 1);
+	return CSG.fromPolygons(transformPolygons(polygons, mat));
+}
+
+methods["rotateZ"] = function (polygons, p) {
+	let mat = geom.Matrix.rotateMatrix(0, 0, 1, p[0] * 1);
+	return CSG.fromPolygons(transformPolygons(polygons, mat));
+}
+
+let startTime = Date.now();
 
 document.objects.forEach((o) => {
 	var m = o.name.match("csg:(.*)");
 	if (!m || o.locked) return;
 	var exp = '(' + m[1].replace(/\s+/, '') + ')';
+	console.log(exp);
 
 	var prefix = "_tmp";
 	var csgs = {}, seq = 0;
+	var needclean = false;
 	do {
 		console.log(exp);
 		var lastexp = exp;
+		exp = exp.replace(/\(([0-9]+)\)/, "($1,)"); // (123) => (123,)
 		exp = exp.replace(/\((\w+)\)/, "$1"); // (a) => a
 		exp = exp.replace(/(\w+)\.(\w+)\(([^)]*)\)/g, (a, op1, f, params) => {
 			if (!methods[f]) {
@@ -276,6 +361,10 @@ document.objects.forEach((o) => {
 			csgs[prefix + seq] = functions[f](params.split(","));
 			return prefix + (seq++);
 		});
+		if (exp != lastexp) {
+			console.log("Contune " + exp);
+			continue;
+		}
 		exp = exp.replace(/~(\w+)/g, (a, op1) => {
 			csgs[op1] = csgs[op1] || CSG.fromPolygons(toCSGPolygons(getObjectByName(op1)));
 			csgs[prefix + seq] = csgs[op1].invert();
@@ -291,16 +380,20 @@ document.objects.forEach((o) => {
 			} else if (op == "&") {
 				csgs[prefix + seq] = csgs[op1].intersect(csgs[op2]);
 			}
+			needclean = true;
 			return prefix + (seq++);
 		});
 	} while (exp != lastexp);
 
+	csgs[exp] = csgs[exp] || CSG.fromPolygons(toCSGPolygons(getObjectByName(exp)));
 	if (csgs[exp]) {
 		// clone object without faces.
 		var dst = o; // o.clone();
-		dst.verts.forEach((v, i) => { delete dst.verts[i] });
+		for (var i = 0; i < dst.verts.length; i++) {
+			delete dst.verts[i];
+		}
 		dst.compact();
-		csgToObject(dst, csgs[exp], true, true);
+		csgToObject(dst, csgs[exp], needclean, needclean);
 
 		// swap
 		// console.log("replace: " + o.name);
@@ -310,5 +403,5 @@ document.objects.forEach((o) => {
 		alert(exp);
 	}
 });
-console.log("finished");
+console.log("finished (" + (Date.now() - startTime) + "ms)");
 

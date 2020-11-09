@@ -1,0 +1,3 @@
+_build/*
+mqsdk/*
+!mqsdk/*.txt

@@ -1,0 +1,4 @@
+
+https://www.metaseq.net/jp/download/sdk/
+
+unzip and copy mqsdk directory.

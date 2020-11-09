@@ -3,214 +3,237 @@
 #include <vector>
 #include <sstream>
 #include <codecvt>
-#include "libplatform/libplatform.h"
-#include "v8.h"
 #include <windows.h>
+
 #include "MQWidget.h"
-
-
-//---------------------------------------------------------------------------------------------------------------------
-// Utils
-//---------------------------------------------------------------------------------------------------------------------
-#define UTF8(s) v8::String::NewFromUtf8(isolate, s, v8::NewStringType::kNormal).ToLocalChecked()
+#include "Utils.h"
+#include "qjsutils.h"
 
 
 //---------------------------------------------------------------------------------------------------------------------
 // Dialog
 //---------------------------------------------------------------------------------------------------------------------
-using namespace v8;
 
-Local<ObjectTemplate> NewFile(Isolate* isolate, const std::string &path, bool writable);
+JSValue NewFile(JSContext* context, const std::string& path, bool writable);
 
 class Dialog : public MQDialog {
 public:
-	uint64_t button;
-	std::vector<std::pair<Local<Object>, MQEdit*>> itemholders;
-	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-	Isolate* isolate;
-	MQWindow mainWindow;
+  uint64_t button;
+  std::vector<std::pair<ValueHolder, MQEdit*>> itemholders;
+  std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+  JSContext* context;
+  MQWindow mainWindow;
 
-	Dialog(Isolate* i) : mainWindow(MQWindow::GetMainWindow()), MQDialog(mainWindow), button(-1), isolate(i) {
-	}
+  Dialog(JSContext* ctx) : mainWindow(MQWindow::GetMainWindow()), MQDialog(MQWindow::GetMainWindow()), button(-1), context(ctx) {
+  }
 
-	void AddItems(Local<Array> items, MQWidgetBase *parent) {
-		for (uint32_t i = 0; i < items->Length(); i++) {
-			Local<Value> item = items->Get(i);
-			auto context = isolate->GetCurrentContext();
-			if (item->IsString()) {
-				std::wstring label = converter.from_bytes(*String::Utf8Value(isolate, item.As<String>()));
-				auto *w = this->CreateLabel(this, label);
-				parent->AddChild(w);
-			} else if (item->IsObject()) {
-				Local<Value> type = item.As<Object>()->Get(UTF8("type"));
-				Local<Value> value = item.As<Object>()->Get(UTF8("value"));
-				// Local<String> id = item.As<Object>()->Get(UTF8("id")).As<String>();
-				if (type->Equals(context, UTF8("text")).ToChecked()) {
-					std::wstring v = converter.from_bytes(*String::Utf8Value(isolate, value.As<String>()));
-					auto *w = this->CreateEdit(this, v);
-					parent->AddChild(w);
-					itemholders.push_back(std::make_pair(item.As<Object>(), w));
-				} else if (type->Equals(context, UTF8("number")).ToChecked()) {
-					std::wstring v = converter.from_bytes(*String::Utf8Value(isolate, value.As<String>()));
-					auto *w = this->CreateEdit(this, v);
-					w->SetNumeric(MQEdit::NUMERIC_DOUBLE);
-					parent->AddChild(w);
-					itemholders.push_back(std::make_pair(item.As<Object>(), w));
-				} else if (type->Equals(context, UTF8("button")).ToChecked()) {
-					std::wstring v = converter.from_bytes(*String::Utf8Value(isolate, value.As<String>()));
-					auto *w = this->CreateButton(this, v);
-					parent->AddChild(w);
-				} else if (type->Equals(context, UTF8("hframe")).ToChecked()) {
-					auto *w = this->CreateHorizontalFrame(this);
-					parent->AddChild(w);
-					Local<Array> items = item.As<Object>()->Get(UTF8("items")).As<Array>();
-					AddItems(items, w);
-				} else if (type->Equals(context, UTF8("vframe")).ToChecked()) {
-					auto *w = this->CreateVerticalFrame(this);
-					parent->AddChild(w);
-					Local<Array> items = item.As<Object>()->Get(UTF8("items")).As<Array>();
-					AddItems(items, w);
-				}
-			}
-		}
-	}
+  void AddItems(ValueHolder& items, MQWidgetBase* parent) {
+    for (uint32_t i = 0; i < items.Length(); i++) {
+      ValueHolder item = items[i];
+      if (item.IsString()) {
+        std::wstring label = converter.from_bytes(item.to<std::string>());
+        auto* w = this->CreateLabel(this, label);
+        parent->AddChild(w);
+      }
+      else if (item.IsObject()) {
+        std::string type = item["type"].to<std::string>();
+        ValueHolder value = item["value"];
+        // Local<String> id = item.As<Object>()->Get(UTF8("id")).As<String>();
+        if (std::string(type) == "text") {
+          std::wstring v = converter.from_bytes(value.to<std::string>());
+          auto* w = this->CreateEdit(this, v);
+          parent->AddChild(w);
+          itemholders.push_back(std::make_pair(item, w));
+        }
+        else if (std::string(type) == "number") {
+          std::wstring v = converter.from_bytes(value.to<std::string>());
+          auto* w = this->CreateEdit(this, v);
+          w->SetNumeric(MQEdit::NUMERIC_DOUBLE);
+          parent->AddChild(w);
+          itemholders.push_back(std::make_pair(item, w));
+        }
+        else if (std::string(type) == "button") {
+          std::wstring v = converter.from_bytes(value.to<std::string>());
+          auto* w = this->CreateButton(this, v);
+          parent->AddChild(w);
+        }
+        else if (std::string(type) == "hframe") {
+          auto* w = this->CreateHorizontalFrame(this);
+          parent->AddChild(w);
+          ValueHolder items = item["items"];
+          AddItems(items, w);
+        }
+        else if (std::string(type) == "vframe") {
+          auto* w = this->CreateVerticalFrame(this);
+          parent->AddChild(w);
+          ValueHolder items = item["items"];
+          AddItems(items, w);
+        }
+      }
+    }
+  }
 
-	BOOL OnClick(MQWidgetBase *sender, MQDocument doc) {
-		button = sender->GetTag();
-		Close(MQDialog::DIALOG_OK);
-		return TRUE;
-	}
+  BOOL OnClick(MQWidgetBase* sender, MQDocument doc) {
+    button = sender->GetTag();
+    Close(MQDialog::DIALOG_OK);
+    return TRUE;
+  }
 };
 
-static void ModalDialog(const FunctionCallbackInfo<Value>& args) {
-	Isolate* isolate = args.GetIsolate();
+static JSValue ModalDialog(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+  if (argc < 2) {
+    return JS_EXCEPTION;
+  }
 
-	auto dialog = new Dialog(isolate);
-	Local<Object> params = args[0].As<Object>();
-	Local<Array> buttons = args[1].As<Array>();
+  auto dialog = new Dialog(ctx);
+  ValueHolder params(ctx, argv[0], true);
+  ValueHolder buttons(ctx, argv[1], true);
 
-	Local<String> title = params->Get(UTF8("title")).As<String>();
-	Local<Array> items = params->Get(UTF8("items")).As<Array>();
+  std::string title = params["title"].to<std::string>();
+  ValueHolder items = params["items"];
 
-	dialog->SetTitle(dialog->converter.from_bytes(*String::Utf8Value(isolate, title)));
-	dialog->AddItems(items, dialog);
+  dialog->SetTitle(dialog->converter.from_bytes(title));
+  dialog->AddItems(items, dialog);
 
 
-	int buttonCount = buttons->Length();
-	if (buttonCount > 0) {
-		auto *frame = dialog->CreateHorizontalFrame(dialog);
-		dialog->AddChild(frame);
-		for (int i = 0; i < buttonCount; i++) {
-			Local<String> name = buttons->Get(i).As<String>();
-			MQButton *b = dialog->CreateButton(frame, dialog->converter.from_bytes(*String::Utf8Value(isolate, name)));
-			b->AddClickEvent(dialog, &Dialog::OnClick);
-			b->SetTag(i);
-			frame->AddChild(b);
-		}
-	}
+  int buttonCount = buttons.Length();
+  if (buttonCount > 0) {
+    auto* frame = dialog->CreateHorizontalFrame(dialog);
+    dialog->AddChild(frame);
+    for (int i = 0; i < buttonCount; i++) {
+      std::string name = buttons[i].to<std::string>();
+      MQButton* b = dialog->CreateButton(frame, dialog->converter.from_bytes(name));
+      b->AddClickEvent(dialog, &Dialog::OnClick);
+      b->SetTag(i);
+      frame->AddChild(b);
+    }
+  }
 
-	if (dialog->Execute()) {
-		Local<Object> result = Object::New(isolate);
-		Local<Object> values = Object::New(isolate);
-		for (const auto &item : dialog->itemholders) {
-			Local<Value> value = UTF8(dialog->converter.to_bytes(item.second->GetText()).c_str());
-			item.first->Set(UTF8("value"), value);
-			if (!item.first->Get(UTF8("id"))->IsNullOrUndefined()) {
-				values->Set(item.first->Get(UTF8("id")), value);
-			}
-		}
-		result->Set(UTF8("values"), values);
-		result->Set(UTF8("button"), Number::New(isolate, dialog->button));
-		args.GetReturnValue().Set(result);
-	} else {
-		args.GetReturnValue().SetNull();
-	}
-	delete dialog;
+  JSValue ret = JS_UNDEFINED;
+  if (dialog->Execute()) {
+    ValueHolder result(ctx);
+    ValueHolder values(ctx);
+    for (const auto& item : dialog->itemholders) {
+    std::string value = dialog->converter.to_bytes(item.second->GetText()).c_str();
+      ValueHolder h = item.first;
+      h.Set("value", value.c_str());
+      if (h["id"].IsString()) {
+        values.Set(h["id"].to < std::string >() , value);
+      }
+    }
+    result.Set("values", values);
+    result.Set("button", (int)dialog->button);
+    ret = result.GetValue();
+  }
+  delete dialog;
+  return ret;
 }
 
 
-static void FileDialog(const FunctionCallbackInfo<Value>& args) {
-	Isolate* isolate = args.GetIsolate();
+static JSValue FileDialog(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+  if (argc < 1) {
+    JS_ThrowTypeError(ctx, "invalid arguments");
+    return JS_EXCEPTION;
+  }
+  ValueHolder path(ctx, argv[0], true);
 
-	if (!args[0]->IsString()) {
-		isolate->ThrowException(Exception::TypeError(UTF8("invalid args")));
-		return;
-	}
-	String::Utf8Value path(isolate, args[0].As<String>());
-	bool save = args[1]->BooleanValue(isolate);
+  if (!path.IsString()) {
+    JS_ThrowTypeError(ctx, "invalid arguments");
+    return JS_EXCEPTION;
+  }
 
-	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-	std::wstring filter = converter.from_bytes(*path);
+  bool save = argc > 2 ? convert_jsvalue<int>(ctx, argv[1]) : false;
 
-	if (save) {
-		auto window = MQWindow::GetMainWindow();
-		auto dialog = new MQSaveFileDialog(window);
-		dialog->AddFilter(filter);
-		if (dialog->Execute()) {
-			std::wstring path = dialog->GetFileName();
-			args.GetReturnValue().Set(NewFile(isolate, converter.to_bytes(path), save)->NewInstance());
-		} else {
-			args.GetReturnValue().SetNull();
-		}
-	} else {
-		auto window = MQWindow::GetMainWindow();
-		auto dialog = new MQOpenFileDialog(window);
-		dialog->AddFilter(filter);
-		if (dialog->Execute()) {
-			std::wstring path = dialog->GetFileName();
-			args.GetReturnValue().Set(NewFile(isolate, converter.to_bytes(path), save)->NewInstance());
-		} else {
-			args.GetReturnValue().SetNull();
-		}
-	}
+  std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+  std::wstring filter = converter.from_bytes(path.to < std::string >() );
+  JSValue ret = JS_UNDEFINED;
+
+  if (save) {
+    auto window = MQWindow::GetMainWindow();
+    auto dialog = new MQSaveFileDialog(window);
+    dialog->AddFilter(filter);
+    if (dialog->Execute()) {
+      std::wstring path = dialog->GetFileName();
+      ret = NewFile(ctx, converter.to_bytes(path), save);
+    }
+  }
+  else {
+    auto window = MQWindow::GetMainWindow();
+    auto dialog = new MQOpenFileDialog(window);
+    dialog->AddFilter(filter);
+    if (dialog->Execute()) {
+      std::wstring path = dialog->GetFileName();
+      ret = NewFile(ctx, converter.to_bytes(path), save);
+    }
+  }
+  return ret;
 }
 
-static void FolderDialog(const FunctionCallbackInfo<Value>& args) {
-	Isolate* isolate = args.GetIsolate();
+static JSValue FolderDialog(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+  if (argc < 1) {
+    JS_ThrowTypeError(ctx, "invalid arguments");
+    return JS_EXCEPTION;
+  }
+  ValueHolder path(ctx, argv[0], true);
 
-	if (!args[0]->IsString()) {
-		isolate->ThrowException(Exception::TypeError(UTF8("invalid args")));
-		return;
-	}
-	String::Utf8Value path(isolate, args[0].As<String>());
+  if (!path.IsString()) {
+    JS_ThrowTypeError(ctx, "invalid arguments");
+    return JS_EXCEPTION;
+  }
 
-	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-	std::wstring filter = converter.from_bytes(*path);
+  std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+  std::wstring filter = converter.from_bytes(path.to<std::string>());
 
-	auto window = MQWindow::GetMainWindow();
-	auto dialog = new MQFolderDialog(window);
-	// dialog->SetFileMustExist(true);
-	if (dialog->Execute()) {
-		std::wstring path = dialog->GetFolder();
-		args.GetReturnValue().Set(UTF8(converter.to_bytes(path).c_str()));
-	} else {
-		args.GetReturnValue().SetNull();
-	}
-	delete dialog;
+  auto window = MQWindow::GetMainWindow();
+  auto dialog = new MQFolderDialog(window);
+  // dialog->SetFileMustExist(true);
+  JSValue ret = JS_UNDEFINED;
+  if (dialog->Execute()) {
+    std::wstring path = dialog->GetFolder();
+    ret = JS_NewString(ctx, converter.to_bytes(path).c_str());
+  }
+  delete dialog;
+  return ret;
 }
 
-static void AlertDialog(const FunctionCallbackInfo<Value>& args) {
-	Isolate* isolate = args.GetIsolate();
+static JSValue AlertDialog(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+  if (argc < 1) {
+    JS_ThrowTypeError(ctx, "invalid arguments");
+    return JS_EXCEPTION;
+  }
+  ValueHolder message(ctx, argv[0], true);
 
-	if (!args[0]->IsString()) {
-		isolate->ThrowException(Exception::TypeError(UTF8("invalid args")));
-		return;
-	}
-	String::Utf8Value message(isolate, args[0].As<String>());
+  if (!message.IsString()) {
+    JS_ThrowTypeError(ctx, "invalid arguments");
+    return JS_EXCEPTION;
+  }
 
-	std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-	std::wstring wmessage = converter.from_bytes(*message);
-	std::wstring wtitle = L"";
-	MQWindow window = MQWindow::GetMainWindow();
-	MQDialog::MessageInformationBox(window, wmessage, wtitle);
-	args.GetReturnValue().SetNull();
+  std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+  std::wstring wmessage = converter.from_bytes(message.to<std::string>());
+  std::wstring wtitle = L"";
+  MQWindow window = MQWindow::GetMainWindow();
+  MQDialog::MessageInformationBox(window, wmessage, wtitle);
+  return JS_UNDEFINED;
 }
 
-Local<ObjectTemplate> DialogTemplate(Isolate* isolate) {
-	auto fs = ObjectTemplate::New(isolate);
-	fs->Set(UTF8("modalDialog"), FunctionTemplate::New(isolate, ModalDialog));
-	fs->Set(UTF8("fileDialog"), FunctionTemplate::New(isolate, FileDialog));
-	fs->Set(UTF8("folderDialog"), FunctionTemplate::New(isolate, FolderDialog));
-	fs->Set(UTF8("alertDialog"), FunctionTemplate::New(isolate, AlertDialog));
-	return fs;
+const JSCFunctionListEntry dialog_funcs[] = {
+    function_entry("modalDialog", 2, ModalDialog),
+    function_entry("fileDialog", 2, FileDialog),
+    function_entry("folderDialog", 2, FolderDialog),
+    function_entry("alertDialog", 2, AlertDialog),
+};
+
+static int DialogModuleInit(JSContext* ctx, JSModuleDef* m)
+{
+  return JS_SetModuleExportList(ctx, m, dialog_funcs, COUNTOF(dialog_funcs));
+}
+
+JSModuleDef* InitDialogModule(JSContext* ctx) {
+  JSModuleDef* m;
+  m = JS_NewCModule(ctx, "mqdialog", DialogModuleInit);
+  if (!m) {
+    return NULL;
+  }
+  JS_AddModuleExportList(ctx, m, dialog_funcs, COUNTOF(dialog_funcs));
+  return m;
 }

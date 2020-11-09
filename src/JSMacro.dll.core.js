@@ -1,9 +1,5 @@
-"use strict";
-
-// modules
-(function (global){
-
-global.mqdocument = document;
+import * as _dialog from "mqdialog";
+import * as fs from "fs";
 
 // geometry
 class Vector3 {
@@ -117,26 +113,25 @@ let geom = {
 
 // dialog TODO
 let dialog = {
-	alertDialog: process._dialog.alertDialog,
-	fileDialog: process._dialog.fileDialog,
-	folderDialog: process._dialog.folderDialog,
-	modalDialog: process._dialog.modalDialog,
-	confirmDialog: function(msg) { let r = process._dialog.modalDialog({title:msg, items:[msg]}, ["OK", "Cancel"]); return r && r.button == 0; },
-	promptDialog: function(msg, v) { let r = process._dialog.modalDialog({title:msg, items:[{type:"text", value:v||"", id:"_"}]}, ["OK"]); return r && r.values['_']; }
+	alertDialog: _dialog.alertDialog,
+	fileDialog: _dialog.fileDialog,
+	folderDialog: _dialog.folderDialog,
+	modalDialog: _dialog.modalDialog,
+	confirmDialog: function(msg) { let r = _dialog.modalDialog({title:msg, items:[msg]}, ["OK", "Cancel"]); return r && r.button == 0; },
+	promptDialog: function(msg, v) { let r = _dialog.modalDialog({title:msg, items:[{type:"text", value:v||"", id:"_"}]}, ["OK"]); return r && r.values['_']; }
 };
 
 // module
-global.module = (function(unsafe){
+globalThis.module = (function(){
 	let modules = {};
 	modules['dialog'] = {exports: dialog, loaded: true};
 	modules['geom'] = {exports: geom, loaded: true};
-	// modules['fs'] = {exports: unsafe.fs, loaded: true};
-	// modules['child_process'] = {exports: unsafe.child_process, loaded: true};
+	// modules['fs'] = {exports: fs, loaded: true};
+	// modules['child_process'] = {exports: child_process, loaded: true};
 	return {
 		require: function(name) {
 			if (!modules[name]) {
-				console.log("load: "+name);
-				let script = unsafe.fs.readFile(process.scriptDir() + "/" + name);
+				let script = fs.readFile(process.scriptDir() + "/" + name);
 				let mod = {
 					id: name,
 					filename: name,
@@ -152,27 +147,24 @@ global.module = (function(unsafe){
 		},
 		include: function(name) {
 			console.log("load: "+name);
-			let script = unsafe.fs.readFile(process.scriptDir() + "/" + name);
+			let script = fs.readFile(process.scriptDir() + "/" + name);
 			return process.execScript(script, name);
 		}
 	};
-})(unsafe); // global.unsafe : only core.js.
-
-global.require = global.module.require;
-
-global.MQMatrix = Matrix;
-
-})(this);
-
+})();
 
 // Built-in functions
-let alert = require("dialog").alertDialog; // alert(message);
-let confirm = require("dialog").confirmDialog; // confirm(message) -> boolean
-let prompt = require("dialog").promptDialog; // confirm(message, default) -> value
-let console = {
-	"log" : function(v) { process.stdout.write(v); }
+globalThis.alert = dialog.alertDialog; // alert(message);
+globalThis.confirm = dialog.confirmDialog; // confirm(message) -> boolean
+globalThis.prompt = dialog.promptDialog; // confirm(message, default) -> value
+globalThis.mqdocument = document;
+globalThis.console = {
+	log(v) { process.stdout.write(v); },
+	error(v) { process.stderr.write(v); },
 };
+globalThis.MQMatrix = Matrix;
 
+/* TODO
 function setTimeout(f, timeout) {
 	let args = arguments.length > 2 ? [arguments[2]] : [];
 	var wf = function(){
@@ -189,6 +181,7 @@ function setInterval(f, interval) {
 	};
 	process.nextTick(wf, interval);
 }
+*/
 
 
 MQObject.prototype.transform = function(tr) {
