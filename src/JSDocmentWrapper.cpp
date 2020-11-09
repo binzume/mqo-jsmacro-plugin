@@ -8,6 +8,57 @@
 #include "Utils.h"
 #include "qjsutils.h"
 
+
+class IndexedIteratable {
+public:
+  virtual JSValue IteratorGet(JSContext* ctx, int index) = 0;
+};
+
+class IndexIterator {
+  JSContext *ctx;
+  JSValue hold;
+  IndexedIteratable* target;
+  int pos;
+  int count;
+public:
+  IndexIterator(JSContext *ctx, IndexedIteratable* t, int idx, int _count, JSValue hold) : target(t), pos(idx), ctx(ctx), hold(hold), count(_count) {
+    JS_DupValue(ctx, hold);
+  }
+  ~IndexIterator() {
+    JS_FreeValue(ctx, hold);
+  }
+
+  static JSClassID class_id;
+  static const JSCFunctionListEntry proto_funcs[];
+
+  JSValue Next(JSContext* ctx) {
+    ValueHolder ret(ctx);
+    if (pos < count) {
+      ret.Set("value", target->IteratorGet(ctx, pos));
+    }
+    else {
+      ret.Set("value", JS_UNDEFINED);
+    }
+    pos++;
+    ret.Set("done", pos >= count);
+    return ret.GetValue();
+  }
+};
+
+JSClassID IndexIterator::class_id;
+
+const JSCFunctionListEntry IndexIterator::proto_funcs[] = {
+    function_entry<&Next>("next"),
+};
+
+JSValue NewIndexIterator(JSContext* ctx, IndexedIteratable* t, int start, int end, JSValue hold) {
+  JSValue obj = JS_NewObjectClass(ctx, IndexIterator::class_id);
+  if (JS_IsException(obj))
+    return obj;
+  JS_SetOpaque(obj, new IndexIterator(ctx, t, start, end, hold));
+  return obj;
+}
+
 //---------------------------------------------------------------------------------------------------------------------
 // Vertics
 //---------------------------------------------------------------------------------------------------------------------
@@ -20,7 +71,7 @@ JSValue NewVec3(JSContext* ctx, MQPoint p) {
   return v.GetValue();
 }
 
-class VertexArray {
+class VertexArray : public IndexedIteratable {
 public:
   MQObject obj;
   VertexArray(MQObject obj) : obj(obj) {}
@@ -59,9 +110,11 @@ public:
   void set_array_index(uint32_t i) {
     access_index = i;
   }
+  JSValue GetVertex_(JSContext* ctx) {
+    return GetVertex(ctx, access_index);
+  }
 
-  JSValue GetVertex(JSContext* ctx) {
-    uint32_t index = access_index;
+  JSValue GetVertex(JSContext* ctx, int index) {
     MQPoint p = obj->GetVertex(index);
     ValueHolder v(ctx);
     v.Set("x", p.x);
@@ -84,6 +137,13 @@ public:
   bool DeleteVertex(JSContext* ctx, JSValue value) {
     return obj->DeleteVertex(convert_jsvalue<int>(ctx, value));
   }
+
+  JSValue GetIterator(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    return NewIndexIterator(ctx, this, 0, obj->GetFaceCount(), this_val);
+  }
+  JSValue IteratorGet(JSContext* ctx, int index) {
+    return GetVertex(ctx, index);
+  }
 };
 
 template<auto method>
@@ -97,7 +157,7 @@ int delete_property_handler(JSContext* ctx,  JSValueConst obj, JSAtom prop) {
 }
 
 static JSClassExoticMethods VertexArray_exotic{
-  .get_own_property = array_accessor2<&VertexArray::GetVertex, &VertexArray::SetVertex>,
+  .get_own_property = array_accessor2<&VertexArray::GetVertex_, &VertexArray::SetVertex>,
   .delete_property = delete_property_handler<&VertexArray::DeleteVertex>
 };
 
@@ -105,7 +165,8 @@ JSClassID VertexArray::class_id;
 
 const JSCFunctionListEntry VertexArray::proto_funcs[] = {
     function_entry_getset("length", method_wrapper_getter<&Length>),
-    function_entry("append", 1, method_wrapper<&Append>),
+    function_entry<&Append>("append"),
+    function_entry<&GetIterator>("[Symbol.iterator]"),
 };
 
 JSValue NewVertexArray(JSContext* ctx, MQObject o) {
@@ -187,7 +248,7 @@ const JSCFunctionListEntry FaceWrapper::proto_funcs[] = {
     function_entry_getset("visible", method_wrapper_getter<&GetVisible>, method_wrapper_setter<&SetVisible>),
     function_entry_getset("points", method_wrapper_getter<&GetPoints>),
     function_entry_getset("uv", method_wrapper_getter<&GetUV>),
-    function_entry("invert", 0, method_wrapper<&Invert>),
+    function_entry<&Invert>("invert"),
 };
 
 JSValue NewFaceWrapper(JSContext* ctx, MQObject o, int index) {
@@ -198,11 +259,10 @@ JSValue NewFaceWrapper(JSContext* ctx, MQObject o, int index) {
   return obj;
 }
 
-
-class FaceArray {
+class FaceArray : public IndexedIteratable {
 public:
   MQObject obj;
-  FaceArray(MQObject obj) : obj(obj) {}
+  FaceArray(MQObject obj) : obj(obj) { }
 
   static JSClassID class_id;
   static const JSCFunctionListEntry proto_funcs[];
@@ -211,7 +271,7 @@ public:
     return obj->GetFaceCount();
   }
 
-  int Append(JSContext* ctx, JSValue points, int mat) {
+  int AddFace(JSContext* ctx, JSValue points, int mat) {
     ValueHolder v(ctx, points, true);
     uint32_t count = v.Length();
     int* indices = new int[count];
@@ -230,11 +290,15 @@ public:
   void set_array_index(uint32_t i) {
     access_index = i;
   }
-  JSValue GetFace(JSContext* ctx) {
-    if (obj->GetFacePointCount(access_index) == 0) {
+  JSValue GetFace_(JSContext* ctx) {
+    return GetFace(ctx, access_index);
+  }
+
+  JSValue GetFace(JSContext* ctx, int index) {
+    if (obj->GetFacePointCount(index) == 0) {
       return JS_UNDEFINED;
     }
-    return NewFaceWrapper(ctx, obj, access_index);
+    return NewFaceWrapper(ctx, obj, index);
   }
 
   void SetFace(JSContext* ctx, JSValue value) {
@@ -259,10 +323,17 @@ public:
   bool DeleteFace(JSContext* ctx, JSValue value) {
     return obj->DeleteFace(convert_jsvalue<int>(ctx, value));
   }
+
+  JSValue GetIterator(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+    return NewIndexIterator(ctx, this, 0, obj->GetFaceCount(), this_val);
+  }
+  JSValue IteratorGet(JSContext* ctx, int index) {
+    return GetFace(ctx, index);
+  }
 };
 
 static JSClassExoticMethods FaceArray_exotic{
-  .get_own_property = array_accessor2<&FaceArray::GetFace, &FaceArray::SetFace>,
+  .get_own_property = array_accessor2<&FaceArray::GetFace_, &FaceArray::SetFace>,
   .delete_property = delete_property_handler<&FaceArray::DeleteFace>
 };
 
@@ -270,8 +341,8 @@ JSClassID FaceArray::class_id;
 
 const JSCFunctionListEntry FaceArray::proto_funcs[] = {
     function_entry_getset("length", method_wrapper_getter<&Length>),
-    function_entry("append", 2, method_wrapper<&Append>),
-    // TODO: [Symbol.iterator] JS_ITERATOR_KIND_VALUE
+    function_entry<&AddFace>("append"),
+    function_entry<&GetIterator>("[Symbol.iterator]"),
 };
 
 JSValue NewFaceArray(JSContext* ctx, MQObject o) {
@@ -371,10 +442,10 @@ const JSCFunctionListEntry MQObjectWrapper::proto_funcs[] = {
     function_entry_getset("type", method_wrapper_getter<&GetType>, method_wrapper_setter<&SetType>),
     function_entry_getset("visible",  method_wrapper_getter<&Visible>, method_wrapper_setter<&SetVisible>),
     function_entry_getset("selected", method_wrapper_getter<&Selected>, method_wrapper_setter<&SetSelected>),
-    function_entry("compact", 0, method_wrapper<&Compact>),
-    function_entry("freeze", 1, method_wrapper<&Freeze>),
-    function_entry("merge", 1, method_wrapper<&Merge>),
-    function_entry("clone", 1, method_wrapper<&Clone>),
+    function_entry<&Compact>("compact"),
+    function_entry<&Freeze>("freeze"),
+    function_entry<&Merge>("merge"),
+    function_entry<&Clone>("clone"),
 };
 
 JSValue NewMQObject(JSContext* ctx, MQObject o, int index) {
@@ -545,8 +616,7 @@ public:
 
   MQDocumentWrapper(MQDocument doc) : doc(doc) {}
 
-  void Init(JSContext* ctx, JSValueConst this_obj, int argc, JSValueConst* argv) {
-  }
+  void Init(JSContext* ctx, JSValueConst this_obj, int argc, JSValueConst* argv) {}
 
   JSValue Compact() {
     doc->Compact();
@@ -590,7 +660,9 @@ public:
     for (int i = 0; i < doc->GetObjectCount(); i++) {
       auto o = doc->GetObject(i);
       if (o != nullptr) {
-        ret.Set(i, NewMQObject(ctx, o, i));
+        JSValue v = NewMQObject(ctx, o, i);
+        ret.Set(i, v);
+        JS_FreeValue(ctx, v);
       }
     }
     JSValue data[]{ this_val };
@@ -628,7 +700,9 @@ public:
     for (int i = 0; i < doc->GetMaterialCount(); i++) {
       auto o = doc->GetMaterial(i);
       if (o != nullptr) {
-        ret.Set(i, NewMQMaterial(ctx, o, i));
+        JSValue v = NewMQMaterial(ctx, o, i);
+        ret.Set(i, v);
+        JS_FreeValue(ctx, v);
       }
     }
     JSValue data[]{ this_val };
@@ -691,15 +765,14 @@ const JSCFunctionListEntry MQDocumentWrapper::proto_funcs[] = {
     function_entry_getset("objects", method_wrapper_getter<&GetObjects>),
     function_entry_getset("materials", method_wrapper_getter<&GetMaterials>),
     function_entry_getset("scene", method_wrapper_getter<&GetScene>),
-    function_entry("isVertexSelected", 2, method_wrapper<&IsVertexSelected>),
-    function_entry("setVertexSelected", 3, method_wrapper<&SetVertexSelected>),
-    function_entry("isFaceSelected", 2, method_wrapper<&IsFaceSelected>),
-    function_entry("setFaceSelected", 3, method_wrapper<&SetFaceSelected>),
-    function_entry("clearSelect", 0, method_wrapper<&ClearSelect>),
-    function_entry("compact", 0, method_wrapper<&Compact>),
-    function_entry("triangulate", 1, method_wrapper<&Triangulate>),
+    function_entry<&IsVertexSelected>("isVertexSelected"),
+    function_entry<&SetVertexSelected>("setVertexSelected"),
+    function_entry<&IsFaceSelected>("isFaceSelected"),
+    function_entry<&SetFaceSelected>("setFaceSelected"),
+    function_entry<&ClearSelect>("clearSelect"),
+    function_entry<&Compact>("compact"),
+    function_entry<&Triangulate>("triangulate"),
 };
-
 
 static int DocumentModuleInit(JSContext* ctx, JSModuleDef* m) {
   JSValue meta = JS_GetImportMeta(ctx, m);
@@ -723,8 +796,8 @@ void InstallMQDocument(JSContext* ctx, MQDocument doc) {
   NewClassProto<FaceWrapper>(ctx, "Face");
   NewClassProto<VertexArray>(ctx, "VertexArray", &VertexArray_exotic);
   NewClassProto<FaceArray>(ctx, "FaceArray", &FaceArray_exotic);
+  NewClassProto<IndexIterator>(ctx, "IndexIterator");
   JSValue proto = NewClassProto<MQDocumentWrapper>(ctx, "MQDocument");
-
 
   ValueHolder global(ctx, JS_GetGlobalObject(ctx));
   global.Set("document", NewMQDocument(ctx, new MQDocumentWrapper(doc)));

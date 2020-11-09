@@ -97,10 +97,11 @@ public:
     return ValueHolder(ctx, JS_GetPropertyStr(ctx, value, name));
   }
   template<typename TN, typename TV>
-  void Set(TN name, TV v) {
+  TV Set(TN name, TV v) {
     JSAtom prop = to_atom(name);
     JS_SetProperty(ctx, value, prop, to_value(v));
     JS_FreeAtom(ctx, prop);
+    return v;
   }
   template<typename TN>
   void Delete(TN name) {
@@ -167,18 +168,19 @@ JSValue method_wrapper_getter(JSContext* ctx, JSValueConst this_val) {
 }
 
 
-template <typename ...Args>
-constexpr auto arg_count(std::tuple<JSContext*, JSValueConst, int, JSValueConst*>) {
+template <typename R, typename T, typename ...Args>
+constexpr auto arg_count(R(T::*)(JSContext*, JSValueConst, int, JSValueConst*)) {
   return std::make_index_sequence<0>();
 }
-template <typename ...Args>
-constexpr auto arg_count(std::tuple<JSContext*, Args...>) {
+template <typename R, typename T, typename ...Args>
+constexpr auto arg_count(R(T::*)(JSContext* , Args...)) {
   return std::make_index_sequence<sizeof...(Args)>();
 }
-template <typename ...Args>
-constexpr auto arg_count(std::tuple<Args...>) {
+template <typename R, typename T, typename ...Args>
+constexpr auto arg_count(R(T::*)(Args...)) {
   return std::make_index_sequence<sizeof...(Args)>();
 }
+
 
 template<typename T, typename R, typename ...Args>
 inline JSValue invoke_method(R(T::* method)(Args...), JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
@@ -186,10 +188,7 @@ inline JSValue invoke_method(R(T::* method)(Args...), JSContext* ctx, JSValueCon
   if (!p) {
     return JS_EXCEPTION;
   }
-  const auto arg_seq = decltype(arg_count(std::tuple<Args...>()))();
-  if (argc < arg_seq.size()) {
-    return JS_EXCEPTION;
-  }
+  const auto arg_seq = decltype(arg_count(method))();
   if constexpr (std::is_same_v<R, void>) {
     invoke_method_impl(arg_seq, p, method, ctx, this_val, argc, argv);
     return JS_UNDEFINED;
@@ -224,6 +223,7 @@ constexpr JSCFunctionListEntry function_entry(const char* name, uint8_t length, 
   };
 }
 
+
 constexpr JSCFunctionListEntry function_entry_getset(const char* name, JSValue(*getter)(JSContext* ctx, JSValueConst this_val), JSValue(*setter)(JSContext* ctx, JSValueConst this_val, JSValueConst val) = nullptr) {
   return JSCFunctionListEntry{
     .name = name,
@@ -233,6 +233,19 @@ constexpr JSCFunctionListEntry function_entry_getset(const char* name, JSValue(*
     .u = {.getset = {.get = {.getter = getter }, .set = {.setter = setter } } }
   };
 }
+
+template<auto method>
+constexpr JSCFunctionListEntry function_entry(const char* name) {
+  return JSCFunctionListEntry{
+    .name = name,
+    .prop_flags = JS_PROP_WRITABLE | JS_PROP_CONFIGURABLE,
+    .def_type = JS_DEF_CFUNC,
+    .magic = 0,
+    .u = {.func = { (uint8_t)arg_count(method).size(), JS_CFUNC_generic, { .generic = method_wrapper<method> } } }
+  };
+}
+
+
 
 template<typename T, typename ...Args>
 T get_class(JSValue(T::* method)(Args...)) {}
