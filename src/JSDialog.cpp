@@ -1,14 +1,14 @@
 
 #define WIN32_LEAN_AND_MEAN
-#include <vector>
-#include <sstream>
-#include <codecvt>
 #include <windows.h>
+
+#include <codecvt>
+#include <sstream>
+#include <vector>
 
 #include "MQWidget.h"
 #include "Utils.h"
 #include "qjsutils.h"
-
 
 //---------------------------------------------------------------------------------------------------------------------
 // Dialog
@@ -17,53 +17,51 @@
 JSValue NewFile(JSContext* context, const std::string& path, bool writable);
 
 class Dialog : public MQDialog {
-public:
+ public:
   uint64_t button;
   std::vector<std::pair<ValueHolder, MQEdit*>> itemholders;
   std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
   JSContext* context;
   MQWindow mainWindow;
 
-  Dialog(JSContext* ctx) : mainWindow(MQWindow::GetMainWindow()), MQDialog(MQWindow::GetMainWindow()), button(-1), context(ctx) {
-  }
+  Dialog(JSContext* ctx)
+      : mainWindow(MQWindow::GetMainWindow()),
+        MQDialog(MQWindow::GetMainWindow()),
+        button(-1),
+        context(ctx) {}
 
   void AddItems(ValueHolder& items, MQWidgetBase* parent) {
     for (uint32_t i = 0; i < items.Length(); i++) {
       ValueHolder item = items[i];
       if (item.IsString()) {
-        std::wstring label = converter.from_bytes(item.to<std::string>());
+        std::wstring label = converter.from_bytes(item.To<std::string>());
         auto* w = this->CreateLabel(this, label);
         parent->AddChild(w);
-      }
-      else if (item.IsObject()) {
-        std::string type = item["type"].to<std::string>();
+      } else if (item.IsObject()) {
+        std::string type = item["type"].To<std::string>();
         ValueHolder value = item["value"];
         // Local<String> id = item.As<Object>()->Get(UTF8("id")).As<String>();
         if (std::string(type) == "text") {
-          std::wstring v = converter.from_bytes(value.to<std::string>());
+          std::wstring v = converter.from_bytes(value.To<std::string>());
           auto* w = this->CreateEdit(this, v);
           parent->AddChild(w);
           itemholders.push_back(std::make_pair(item, w));
-        }
-        else if (std::string(type) == "number") {
-          std::wstring v = converter.from_bytes(value.to<std::string>());
+        } else if (std::string(type) == "number") {
+          std::wstring v = converter.from_bytes(value.To<std::string>());
           auto* w = this->CreateEdit(this, v);
           w->SetNumeric(MQEdit::NUMERIC_DOUBLE);
           parent->AddChild(w);
           itemholders.push_back(std::make_pair(item, w));
-        }
-        else if (std::string(type) == "button") {
-          std::wstring v = converter.from_bytes(value.to<std::string>());
+        } else if (std::string(type) == "button") {
+          std::wstring v = converter.from_bytes(value.To<std::string>());
           auto* w = this->CreateButton(this, v);
           parent->AddChild(w);
-        }
-        else if (std::string(type) == "hframe") {
+        } else if (std::string(type) == "hframe") {
           auto* w = this->CreateHorizontalFrame(this);
           parent->AddChild(w);
           ValueHolder items = item["items"];
           AddItems(items, w);
-        }
-        else if (std::string(type) == "vframe") {
+        } else if (std::string(type) == "vframe") {
           auto* w = this->CreateVerticalFrame(this);
           parent->AddChild(w);
           ValueHolder items = item["items"];
@@ -80,7 +78,8 @@ public:
   }
 };
 
-static JSValue ModalDialog(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+static JSValue ModalDialog(JSContext* ctx, JSValueConst this_val, int argc,
+                           JSValueConst* argv) {
   if (argc < 2) {
     return JS_EXCEPTION;
   }
@@ -89,20 +88,20 @@ static JSValue ModalDialog(JSContext* ctx, JSValueConst this_val, int argc, JSVa
   ValueHolder params(ctx, argv[0], true);
   ValueHolder buttons(ctx, argv[1], true);
 
-  std::string title = params["title"].to<std::string>();
+  std::string title = params["title"].To<std::string>();
   ValueHolder items = params["items"];
 
   dialog->SetTitle(dialog->converter.from_bytes(title));
   dialog->AddItems(items, dialog);
-
 
   int buttonCount = buttons.Length();
   if (buttonCount > 0) {
     auto* frame = dialog->CreateHorizontalFrame(dialog);
     dialog->AddChild(frame);
     for (int i = 0; i < buttonCount; i++) {
-      std::string name = buttons[i].to<std::string>();
-      MQButton* b = dialog->CreateButton(frame, dialog->converter.from_bytes(name));
+      std::string name = buttons[i].To<std::string>();
+      MQButton* b =
+          dialog->CreateButton(frame, dialog->converter.from_bytes(name));
       b->AddClickEvent(dialog, &Dialog::OnClick);
       b->SetTag(i);
       frame->AddChild(b);
@@ -114,11 +113,12 @@ static JSValue ModalDialog(JSContext* ctx, JSValueConst this_val, int argc, JSVa
     ValueHolder result(ctx);
     ValueHolder values(ctx);
     for (const auto& item : dialog->itemholders) {
-    std::string value = dialog->converter.to_bytes(item.second->GetText()).c_str();
+      std::string value =
+          dialog->converter.to_bytes(item.second->GetText()).c_str();
       ValueHolder h = item.first;
       h.Set("value", value.c_str());
       if (h["id"].IsString()) {
-        values.Set(h["id"].to < std::string >() , value);
+        values.Set(h["id"].To<std::string>(), value);
       }
     }
     result.Set("values", values);
@@ -129,8 +129,8 @@ static JSValue ModalDialog(JSContext* ctx, JSValueConst this_val, int argc, JSVa
   return ret;
 }
 
-
-static JSValue FileDialog(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+static JSValue FileDialog(JSContext* ctx, JSValueConst this_val, int argc,
+                          JSValueConst* argv) {
   if (argc < 1) {
     JS_ThrowTypeError(ctx, "invalid arguments");
     return JS_EXCEPTION;
@@ -145,7 +145,7 @@ static JSValue FileDialog(JSContext* ctx, JSValueConst this_val, int argc, JSVal
   bool save = argc > 2 ? convert_jsvalue<int>(ctx, argv[1]) : false;
 
   std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-  std::wstring filter = converter.from_bytes(path.to < std::string >() );
+  std::wstring filter = converter.from_bytes(path.To<std::string>());
   JSValue ret = JS_UNDEFINED;
 
   if (save) {
@@ -156,8 +156,7 @@ static JSValue FileDialog(JSContext* ctx, JSValueConst this_val, int argc, JSVal
       std::wstring path = dialog->GetFileName();
       ret = NewFile(ctx, converter.to_bytes(path), save);
     }
-  }
-  else {
+  } else {
     auto window = MQWindow::GetMainWindow();
     auto dialog = new MQOpenFileDialog(window);
     dialog->AddFilter(filter);
@@ -169,7 +168,8 @@ static JSValue FileDialog(JSContext* ctx, JSValueConst this_val, int argc, JSVal
   return ret;
 }
 
-static JSValue FolderDialog(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+static JSValue FolderDialog(JSContext* ctx, JSValueConst this_val, int argc,
+                            JSValueConst* argv) {
   if (argc < 1) {
     JS_ThrowTypeError(ctx, "invalid arguments");
     return JS_EXCEPTION;
@@ -182,7 +182,7 @@ static JSValue FolderDialog(JSContext* ctx, JSValueConst this_val, int argc, JSV
   }
 
   std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-  std::wstring filter = converter.from_bytes(path.to<std::string>());
+  std::wstring filter = converter.from_bytes(path.To<std::string>());
 
   auto window = MQWindow::GetMainWindow();
   auto dialog = new MQFolderDialog(window);
@@ -196,7 +196,8 @@ static JSValue FolderDialog(JSContext* ctx, JSValueConst this_val, int argc, JSV
   return ret;
 }
 
-static JSValue AlertDialog(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst* argv) {
+static JSValue AlertDialog(JSContext* ctx, JSValueConst this_val, int argc,
+                           JSValueConst* argv) {
   if (argc < 1) {
     JS_ThrowTypeError(ctx, "invalid arguments");
     return JS_EXCEPTION;
@@ -209,7 +210,7 @@ static JSValue AlertDialog(JSContext* ctx, JSValueConst this_val, int argc, JSVa
   }
 
   std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-  std::wstring wmessage = converter.from_bytes(message.to<std::string>());
+  std::wstring wmessage = converter.from_bytes(message.To<std::string>());
   std::wstring wtitle = L"";
   MQWindow window = MQWindow::GetMainWindow();
   MQDialog::MessageInformationBox(window, wmessage, wtitle);
@@ -223,8 +224,7 @@ const JSCFunctionListEntry dialog_funcs[] = {
     function_entry("alertDialog", 2, AlertDialog),
 };
 
-static int DialogModuleInit(JSContext* ctx, JSModuleDef* m)
-{
+static int DialogModuleInit(JSContext* ctx, JSModuleDef* m) {
   return JS_SetModuleExportList(ctx, m, dialog_funcs, COUNTOF(dialog_funcs));
 }
 
