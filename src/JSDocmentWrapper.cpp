@@ -102,11 +102,6 @@ class VertexArray : public IndexedIteratable {
     return to_jsvalue(ctx, obj->AddVertex(p));
   }
 
-  // ser from array_accessor2...
-  uint32_t access_index = 0;
-  void set_array_index(uint32_t i) { access_index = i; }
-  JSValue GetVertex_(JSContext* ctx) { return GetVertex(ctx, access_index); }
-
   JSValue GetVertex(JSContext* ctx, int index) {
     MQPoint p = obj->GetVertex(index);
     ValueHolder v(ctx);
@@ -118,8 +113,7 @@ class VertexArray : public IndexedIteratable {
     return v.GetValue();
   }
 
-  void SetVertex(JSContext* ctx, JSValue value) {
-    uint32_t index = access_index;
+  void SetVertex(JSContext* ctx, JSValue value, int index) {
     MQPoint p;
     ValueHolder v(ctx, value, true);
     p.x = v["x"].To<float>();
@@ -151,8 +145,8 @@ int delete_property_handler(JSContext* ctx, JSValueConst obj, JSAtom prop) {
 }
 
 static JSClassExoticMethods VertexArray_exotic{
-    .get_own_property =
-        array_accessor2<&VertexArray::GetVertex_, &VertexArray::SetVertex>,
+    .get_own_property = indexed_propery_handler<&VertexArray::GetVertex,
+                                                &VertexArray::SetVertex>,
     .delete_property = delete_property_handler<&VertexArray::DeleteVertex>};
 
 JSClassID VertexArray::class_id;
@@ -260,11 +254,6 @@ class FaceArray : public IndexedIteratable {
     return f;
   }
 
-  // ser from array_accessor2...
-  uint32_t access_index = 0;
-  void set_array_index(uint32_t i) { access_index = i; }
-  JSValue GetFace_(JSContext* ctx) { return GetFace(ctx, access_index); }
-
   JSValue GetFace(JSContext* ctx, int index) {
     if (obj->GetFacePointCount(index) == 0) {
       return JS_UNDEFINED;
@@ -272,8 +261,7 @@ class FaceArray : public IndexedIteratable {
     return NewFaceWrapper(ctx, obj, index);
   }
 
-  void SetFace(JSContext* ctx, JSValue value) {
-    int index = access_index;
+  void SetFace(JSContext* ctx, JSValue value, int index) {
     ValueHolder face(ctx, value, true);
     auto points = face["points"];
     if (points.IsArray()) {
@@ -304,7 +292,7 @@ class FaceArray : public IndexedIteratable {
 
 static JSClassExoticMethods FaceArray_exotic{
     .get_own_property =
-        array_accessor2<&FaceArray::GetFace_, &FaceArray::SetFace>,
+        indexed_propery_handler<&FaceArray::GetFace, &FaceArray::SetFace>,
     .delete_property = delete_property_handler<&FaceArray::DeleteFace>};
 
 JSClassID FaceArray::class_id;

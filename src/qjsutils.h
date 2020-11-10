@@ -176,6 +176,14 @@ JSValue method_wrapper_getter(JSContext* ctx, JSValueConst this_val) {
   return invoke_method(method, ctx, this_val, 0, nullptr);
 }
 
+template <auto method>
+JSValue method_wrapper_append_data(JSContext* ctx, JSValueConst this_val,
+                                   int argc, JSValueConst* argv, int magic,
+                                   JSValue* func_data) {
+  argv[argc] = *func_data;  // TODO: check length of function.
+  return invoke_method(method, ctx, this_val, argc + 1, argv);
+}
+
 template <typename R, typename T, typename... Args>
 inline auto arg_count(R (T::*)(JSContext*, JSValueConst, int, JSValueConst*)) {
   return std::make_index_sequence<0>();
@@ -272,10 +280,10 @@ constexpr JSCFunctionListEntry function_entry_getset(const char* name) {
 template <typename T, typename... Args>
 T get_class(JSValue (T::*method)(Args...)) {}
 
-template <auto method>
-static int array_accessor(JSContext* ctx, JSPropertyDescriptor* desc,
+template <auto getter>
+static int indexed_propery_getter(JSContext* ctx, JSPropertyDescriptor* desc,
                           JSValueConst obj, JSAtom prop) {
-  typedef decltype(get_class(method)) T;
+  typedef decltype(get_class(getter)) T;
   JSValue propv = JS_AtomToValue(ctx, prop);
   // JS_AtomToValue and JS_ToIndex are too expensive...
   if ((prop & (1U << 31)) == 0) {
@@ -284,12 +292,12 @@ static int array_accessor(JSContext* ctx, JSPropertyDescriptor* desc,
   uint32_t index = (prop & ~(1U << 31));
   desc->flags = 0;
   desc->value =
-      (((T*)JS_GetOpaque2(ctx, obj, T::class_id))->*method)(ctx, index);
+      std::invoke(getter, (T*)JS_GetOpaque2(ctx, obj, T::class_id) , ctx, index);
   return 1;
 }
 
 template <auto getter, auto setter>
-static int array_accessor2(JSContext* ctx, JSPropertyDescriptor* desc,
+static int indexed_propery_handler(JSContext* ctx, JSPropertyDescriptor* desc,
                            JSValueConst obj, JSAtom prop) {
   typedef decltype(get_class(getter)) T;
   JSValue propv = JS_AtomToValue(ctx, prop);
@@ -297,11 +305,14 @@ static int array_accessor2(JSContext* ctx, JSPropertyDescriptor* desc,
   if ((prop & (1U << 31)) == 0) {
     return 0;
   }
-  uint32_t index = (prop & ~(1U << 31));
-  ((T*)JS_GetOpaque2(ctx, obj, T::class_id))->set_array_index(index);  // FIXME;
+  static JSValue indexValue = JS_UNDEFINED;  // TODO: multi-tread
+  JS_FreeValue(ctx, indexValue);
+  indexValue = JS_NewInt32(ctx, (prop & ~(1U << 31)));
   desc->flags = JS_PROP_GETSET;
-  desc->getter = JS_NewCFunction(ctx, method_wrapper<getter>, "getter", 0);
-  desc->setter = JS_NewCFunction(ctx, method_wrapper<setter>, "setter", 1);
+  desc->getter = JS_NewCFunctionData(ctx, method_wrapper_append_data<getter>, 1,
+                                     0, 1, &indexValue);
+  desc->setter = JS_NewCFunctionData(ctx, method_wrapper_append_data<setter>, 2,
+                                     0, 1, &indexValue);
   return 1;
 }
 
