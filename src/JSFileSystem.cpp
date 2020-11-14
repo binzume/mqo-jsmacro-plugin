@@ -1,6 +1,4 @@
 
-#define WIN32_LEAN_AND_MEAN
-#include <codecvt>
 #include <fstream>
 #include <sstream>
 #include <vector>
@@ -82,7 +80,7 @@ static JSValue ReadFile(JSContext* ctx, JSValueConst this_val, int argc,
   if (argc < 1) {
     return JS_EXCEPTION;
   }
-  ValueHolder path(ctx, argv[0]);
+  ValueHolder path(ctx, argv[0], true);
   if (!path.IsString()) {
     JS_ThrowTypeError(ctx, "invalid path");
     return JS_EXCEPTION;
@@ -106,8 +104,8 @@ static JSValue WriteFile(JSContext* ctx, JSValueConst this_val, int argc,
   if (argc < 2) {
     return JS_EXCEPTION;
   }
-  ValueHolder path(ctx, argv[0]);
-  ValueHolder data(ctx, argv[1]);
+  ValueHolder path(ctx, argv[0], true);
+  ValueHolder data(ctx, argv[1], true);
   if (!path.IsString()) {
     JS_ThrowTypeError(ctx, "invalid path");
     return JS_EXCEPTION;
@@ -115,7 +113,7 @@ static JSValue WriteFile(JSContext* ctx, JSValueConst this_val, int argc,
 
   int mode = std::ofstream::binary;
   if (argc > 2 && JS_IsObject(argv[2])) {
-    ValueHolder options(ctx, argv[2]);
+    ValueHolder options(ctx, argv[2], true);
     if (options["flag"].To<std::string>() == "a") {
       mode |= std::ofstream::app;
     }
@@ -137,8 +135,8 @@ static JSValue OpenFile(JSContext* ctx, JSValueConst this_val, int argc,
   if (argc < 1) {
     return JS_EXCEPTION;
   }
-  ValueHolder path(ctx, argv[0]);
-  ValueHolder write(ctx, argv[1]);
+  ValueHolder path(ctx, argv[0], true);
+  ValueHolder write(ctx, argv[1], true);
   if (!path.IsString()) {
     JS_ThrowTypeError(ctx, "invalid path");
     return JS_EXCEPTION;

@@ -2,6 +2,7 @@
 
 #include <string>
 #include <tuple>
+#include <type_traits>
 
 #include "quickjs.h"
 
@@ -184,18 +185,50 @@ JSValue method_wrapper_append_data(JSContext* ctx, JSValueConst this_val,
   return invoke_method(method, ctx, this_val, argc + 1, argv);
 }
 
+// function/method type.
+template <typename... Types>
+struct types {};
+template <typename T>
+struct arg_info;
 template <typename R, typename T, typename... Args>
-inline auto arg_count(R (T::*)(JSContext*, JSValueConst, int, JSValueConst*)) {
-  return std::make_index_sequence<0>();
-}
+struct arg_info<R (T::*)(Args...)> {
+  using prefix = typename types<R, T*>;
+  using extra = typename types<Args...>;
+  using extra_seq = decltype(std::make_index_sequence<sizeof...(Args)>());
+};
 template <typename R, typename T, typename... Args>
-inline auto arg_count(R (T::*)(JSContext*, Args...)) {
-  return std::make_index_sequence<sizeof...(Args)>();
-}
+struct arg_info<R (T::*)(JSContext*, Args...)> {
+  using prefix = typename types<R, T*, JSContext*>;
+  using extra = typename types<Args...>;
+  using extra_seq = decltype(std::make_index_sequence<sizeof...(Args)>());
+};
 template <typename R, typename T, typename... Args>
-inline auto arg_count(R (T::*)(Args...)) {
-  return std::make_index_sequence<sizeof...(Args)>();
-}
+struct arg_info<R (T::*)(JSContext*, JSValueConst, int, JSValueConst*,
+                         Args...)> {
+  using prefix =
+      typename types<R, T*, JSContext*, JSValueConst, int, JSValueConst*>;
+  using extra = typename types<Args...>;
+  using extra_seq = decltype(std::make_index_sequence<sizeof...(Args)>());
+};
+template <typename R, typename... Args>
+struct arg_info<R (*)(Args...)> {
+  using prefix = typename types<R>;
+  using extra = typename types<Args...>;
+  using extra_seq = decltype(std::make_index_sequence<sizeof...(Args)>());
+};
+template <typename R, typename... Args>
+struct arg_info<R (*)(JSContext*, Args...)> {
+  using prefix = typename types<R, JSContext*>;
+  using extra = typename types<Args...>;
+  using extra_seq = decltype(std::make_index_sequence<sizeof...(Args)>());
+};
+template <typename R, typename... Args>
+struct arg_info<R (*)(JSContext*, JSValueConst, int, JSValueConst*, Args...)> {
+  using prefix =
+      typename types<R, JSContext*, JSValueConst, int, JSValueConst*>;
+  using extra = typename types<Args...>;
+  using extra_seq = decltype(std::make_index_sequence<sizeof...(Args)>());
+};
 
 template <typename T, typename R, typename... Args>
 inline JSValue invoke_method(R (T::*method)(Args...), JSContext* ctx,
@@ -205,37 +238,34 @@ inline JSValue invoke_method(R (T::*method)(Args...), JSContext* ctx,
   if (!p) {
     return JS_EXCEPTION;
   }
-  const auto arg_seq = arg_count(method);
-  if constexpr (std::is_same_v<R, void>) {
-    invoke_method_impl(arg_seq, p, method, ctx, this_val, argc, argv);
-    return JS_UNDEFINED;
-  } else {
-    return to_jsvalue(
-        ctx, invoke_method_impl(arg_seq, p, method, ctx, this_val, argc, argv));
-  }
+  using arg = arg_info<decltype(method)>;
+  std::tuple prefix(ctx, this_val, argc, argv, p);
+  return invoke_function_impl(arg::prefix(), arg::extra(), arg::extra_seq(),
+                              prefix, method, ctx, argv);
 }
 
-template <typename T, typename R, std::size_t... N>
-inline R invoke_method_impl(std::index_sequence<N...>, T* p,
-                            R (T::*method)(JSContext*, JSValueConst, int,
-                                           JSValueConst*),
-                            JSContext* ctx, JSValueConst this_val, int argc,
-                            JSValueConst* argv) {
-  return std::invoke(method, p, ctx, this_val, argc, argv);
+template <typename R, typename... Args>
+inline JSValue invoke_method(R (*method)(Args...), JSContext* ctx,
+                             JSValueConst this_val, int argc,
+                             JSValueConst* argv) {
+  using arg = arg_info<decltype(method)>;
+  std::tuple prefix(ctx, this_val, argc, argv);
+  return invoke_function_impl(arg::prefix(), arg::extra(), arg::extra_seq(),
+                              prefix, method, ctx, argv);
 }
-template <typename T, typename R, typename... Args, std::size_t... N>
-inline R invoke_method_impl(std::index_sequence<N...>, T* p,
-                            R (T::*method)(JSContext*, Args...), JSContext* ctx,
-                            JSValueConst this_val, int argc,
-                            JSValueConst* argv) {
-  return std::invoke(method, p, ctx, convert_jsvalue<Args>(ctx, argv[N])...);
-}
-template <typename T, typename R, typename... Args, std::size_t... N>
-inline R invoke_method_impl(std::index_sequence<N...>, T* p,
-                            R (T::*method)(Args...), JSContext* ctx,
-                            JSValueConst this_val, int argc,
-                            JSValueConst* argv) {
-  return std::invoke(method, p, convert_jsvalue<Args>(ctx, argv[N])...);
+
+template <typename T, typename F, typename R, typename... Pre, std::size_t... N,
+          typename... Args>
+inline JSValue invoke_function_impl(types<R, Pre...>, types<Args...>,
+                                    std::index_sequence<N...>, const T& p, F f,
+                                    JSContext* ctx, JSValueConst* argv) {
+  if constexpr (std::is_void<R>()) {
+    std::invoke(f, std::get<Pre>(p)..., convert_jsvalue<Args>(ctx, argv[N])...);
+    return JS_UNDEFINED;
+  } else {
+    return to_jsvalue(ctx, std::invoke(f, std::get<Pre>(p)...,
+                                       convert_jsvalue<Args>(ctx, argv[N])...));
+  }
 }
 
 constexpr JSCFunctionListEntry function_entry(const char* name, uint8_t length,
@@ -250,7 +280,8 @@ constexpr JSCFunctionListEntry function_entry(const char* name, uint8_t length,
 
 template <auto method>
 constexpr JSCFunctionListEntry function_entry(const char* name) {
-  return function_entry(name, (uint8_t)arg_count(method).size(),
+  return function_entry(name,
+                        (uint8_t)arg_info<decltype(method)>::extra_seq::size(),
                         method_wrapper<method>);
 }
 
@@ -282,7 +313,7 @@ T get_class(JSValue (T::*method)(Args...)) {}
 
 template <auto getter>
 static int indexed_propery_getter(JSContext* ctx, JSPropertyDescriptor* desc,
-                          JSValueConst obj, JSAtom prop) {
+                                  JSValueConst obj, JSAtom prop) {
   typedef decltype(get_class(getter)) T;
   JSValue propv = JS_AtomToValue(ctx, prop);
   // JS_AtomToValue and JS_ToIndex are too expensive...
@@ -292,39 +323,52 @@ static int indexed_propery_getter(JSContext* ctx, JSPropertyDescriptor* desc,
   uint32_t index = (prop & ~(1U << 31));
   desc->flags = 0;
   desc->value =
-      std::invoke(getter, (T*)JS_GetOpaque2(ctx, obj, T::class_id) , ctx, index);
+      std::invoke(getter, (T*)JS_GetOpaque2(ctx, obj, T::class_id), ctx, index);
   return 1;
 }
 
 template <auto getter, auto setter>
 static int indexed_propery_handler(JSContext* ctx, JSPropertyDescriptor* desc,
-                           JSValueConst obj, JSAtom prop) {
+                                   JSValueConst obj, JSAtom prop) {
   typedef decltype(get_class(getter)) T;
-  JSValue propv = JS_AtomToValue(ctx, prop);
+  // JSValue propv = JS_AtomToValue(ctx, prop);
   // JS_AtomToValue and JS_ToIndex are too expensive...
   if ((prop & (1U << 31)) == 0) {
     return 0;
   }
   static JSValue indexValue = JS_UNDEFINED;  // TODO: multi-tread
-  JS_FreeValue(ctx, indexValue);
-  indexValue = JS_NewInt32(ctx, (prop & ~(1U << 31)));
-  desc->flags = JS_PROP_GETSET;
-  desc->getter = JS_NewCFunctionData(ctx, method_wrapper_append_data<getter>, 1,
-                                     0, 1, &indexValue);
-  desc->setter = JS_NewCFunctionData(ctx, method_wrapper_append_data<setter>, 2,
-                                     0, 1, &indexValue);
+  if (desc != nullptr) {
+    JS_FreeValue(ctx, indexValue);
+    indexValue = JS_NewInt32(ctx, (prop & ~(1U << 31)));
+    desc->flags = JS_PROP_GETSET;
+    desc->getter = JS_NewCFunctionData(ctx, method_wrapper_append_data<getter>,
+                                       1, 0, 1, &indexValue);
+    desc->setter = JS_NewCFunctionData(ctx, method_wrapper_append_data<setter>,
+                                       2, 0, 1, &indexValue);
+  }
   return 1;
 }
 
+template <typename, typename = std::void_t<> >
+struct has_init : std::false_type {};
 template <typename T>
-static constexpr bool hasInit(...) {
-  return false;
+struct has_init<T, std::void_t<decltype(&T::Init)> > : std::true_type {};
+
+template <typename T>
+inline auto instantiate(JSContext* ctx, JSValueConst new_target, int argc,
+                        JSValueConst* argv) -> decltype(new T()) {
+  return new T();
 }
 template <typename T>
-static constexpr bool hasInit(
-    int, decltype((std::declval<T>().Init(nullptr, JSValueConst(), int(),
-                                          nullptr)))* = 0) {
-  return true;
+inline auto instantiate(JSContext* ctx, JSValueConst new_target, int argc,
+                        JSValueConst* argv) -> decltype(new T(ctx)) {
+  return new T(ctx);
+}
+template <typename T>
+inline auto instantiate(JSContext* ctx, JSValueConst new_target, int argc,
+                        JSValueConst* argv)
+    -> decltype(new T(ctx, new_target, argc, argv)) {
+  return new T(ctx, new_target, argc, argv);
 }
 
 template <typename T>
@@ -336,11 +380,11 @@ static JSValue simple_constructor(JSContext* ctx, JSValueConst new_target,
   JSValue obj = JS_NewObjectProtoClass(ctx, proto, T::class_id);
   JS_FreeValue(ctx, proto);
 
-  T* p = new T(ctx);
+  T* p = instantiate<T>(ctx, obj, argc, argv);
   JS_SetOpaque(obj, p);
 
-  if constexpr (hasInit<T>(0)) {
-    p->Init(ctx, obj, argc, argv);
+  if constexpr (has_init<T>::value) {
+    invoke_method(&T::Init, ctx, obj, argc, argv);
   }
 
   return obj;

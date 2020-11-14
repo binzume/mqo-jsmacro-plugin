@@ -64,6 +64,7 @@ class Matrix{
 				m[8] * p.x + m[9] * p.y + m[10]* p.z + m[11]);
 		}
 	}
+	transformV(p){ return this.transform(p); }
 	static scaleMatrix(x,y,z) {
 		return new Matrix([x, 0, 0, 0,  0, y, 0, 0,  0, 0, z, 0,  0, 0, 0, 1]);
 	}
@@ -146,8 +147,8 @@ globalThis.module = (function(){
 			return modules[name].exports;
 		},
 		include: function(name) {
-			console.log("load: "+name);
-			let script = fs.readFile(process.scriptDir() + "/" + name);
+			console.log("load: "+ name);
+			let script = fs.readFile(process.scriptDir() + name);
 			return process.execScript(script, name);
 		}
 	};
@@ -163,17 +164,17 @@ globalThis.console = {
 	error(v) { process.stderr.write(v); },
 };
 globalThis.MQMatrix = Matrix;
+globalThis.require = module.require;
 
-/* TODO
-function setTimeout(f, timeout) {
+globalThis.setTimeout = function(f, timeout) {
 	let args = arguments.length > 2 ? [arguments[2]] : [];
 	var wf = function(){
 		f.apply(null, args);
 	};
-	process.nextTick(wf, interval);
+	process.nextTick(wf, timeout);
 }
 
-function setInterval(f, interval) {
+globalThis.setInterval = function(f, interval) {
 	let args = arguments.length > 2 ? [arguments[2]] : [];
 	var wf = function(){
 		f.apply(null, args);
@@ -181,8 +182,6 @@ function setInterval(f, interval) {
 	};
 	process.nextTick(wf, interval);
 }
-*/
-
 
 MQObject.prototype.transform = function(tr) {
 	const length = this.verts.length;
@@ -196,4 +195,3 @@ MQObject.prototype.transform = function(tr) {
 		}
 	}
 };
-

@@ -13,7 +13,7 @@ JSMacroWindow::JSMacroWindow(MQWindowBase &parent, WindowCallback &callback)
   setlocale(LC_ALL, "");
   setlocale(LC_CTYPE, "ja_JP.UTF-8");
 
-  SetTitle(L"JSMacro");
+  SetTitle(L"JavaScript");
   SetOutSpace(0.4);
 
   MQTab *tab = CreateTab(this);
