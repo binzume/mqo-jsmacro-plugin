@@ -5,6 +5,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <fstream>
 #include <functional>
 #include <map>
@@ -41,35 +42,64 @@ class JsContext {
  public:
   JSContext *ctx;
   UINT_PTR tickTimerId = 0;
-  JSValue nextTickFun = JS_UNDEFINED;
+  struct TimerEntry {
+    int32_t timeout;
+    uint32_t id;
+    JSValue func;
+  };
+  std::vector<TimerEntry> timers;
   JsContext(JSRuntime *runtime, MQDocument doc,
             const std::vector<std::string> &argv = std::vector<std::string>())
       : ctx(CreateContext(runtime, doc, argv)) {}
   ValueHolder ExecScript(const std::string &code,
                          const std::string &maybepath = "");
   ValueHolder GetGlobal() { return ValueHolder(ctx, JS_GetGlobalObject(ctx)); }
-  void SetNextTick(JSValue f, UINT_PTR newTimer) {
-    JS_FreeValue(ctx, nextTickFun);
-    nextTickFun = f;
+  void RegisterTimer(JSValue f, int32_t time, uint32_t id = 0) {
+    timers.push_back(TimerEntry{time, id, f});
+  }
+  void RemoveTimer(uint32_t id) {
+    timers.erase(std::remove_if(timers.begin(), timers.end(),
+                                [id](auto &t) { return t.id == id; }),
+                 timers.end());
+  }
+  int32_t GetNextTimeout(int32_t now) {
+    if (timers.empty()) {
+      return -1;
+    }
+    std::sort(timers.begin(), timers.end(), [now](auto &a, auto &b) -> bool {
+      return (a.timeout - now) > (b.timeout - now);  // 2^32 wraparound
+    });
+    int next = timers.back().timeout - now;
+    return max(next, 0);
+  }
+  bool ConsumeTimer(int32_t now) {
+    std::vector<TimerEntry> t;
+    int32_t eps = 2;
+    while (!timers.empty() && timers.back().timeout - now <= eps) {
+      t.push_back(timers.back());
+      timers.pop_back();
+    }
+    for (auto &ent : t) {
+      JSValue r =
+          JS_Call(ctx, ent.func, ent.func, 0, nullptr);  // may update timers.
+      if (JS_IsException(r)) {
+        dump_exception(ctx, r);
+      }
+      JS_FreeValue(ctx, r);
+      JS_FreeValue(ctx, ent.func);
+    }
+    return !t.empty();
+  }
+  void SetNextTimer(UINT_PTR newTimer) {
     if (tickTimerId) {
       KillTimer(NULL, tickTimerId);
     }
     tickTimerId = newTimer;
   }
-  JSValue Tick() {
-    JSValue f = nextTickFun;
-    nextTickFun = JS_UNDEFINED;
-    JSValue r = JS_Call(ctx, f, f, 0, nullptr);
-    if (JS_IsException(r)) {
-      dump_exception(ctx, r);
-    }
-    JS_FreeValue(ctx, f);
-    return r;
-  }
   ~JsContext() {
-    JS_FreeValue(ctx, nextTickFun);
-    if (tickTimerId) {
-      KillTimer(NULL, tickTimerId);
+    SetNextTimer(0);
+    for (auto &ent : timers) {
+      JS_FreeValue(ctx, ent.func);
     }
     JS_FreeContext(ctx);
   }
@@ -85,25 +115,29 @@ class JSMacroPlugin : public MQStationPlugin {
   std::map<std::string, std::string> pluginKeyValue;
   std::string currentScriptPath;
   JSMacroWindow *window;
+  MQDocument currentDocument = nullptr;
   JSMacroPlugin();
 
   void GetPlugInID(DWORD *Product, DWORD *ID);
   const char *GetPlugInName(void);
-  const char *EnumString(void);
+  const wchar_t *EnumString(void);
   BOOL Initialize();
   void Exit();
   BOOL Activate(MQDocument doc, BOOL flag);
   BOOL IsActivated(MQDocument doc);
   void OnNewDocument(MQDocument doc, const char *filename,
                      NEW_DOCUMENT_PARAM &param) {
+    currentDocument = doc;
     ParseElements(param.elem);
   }
   void OnSaveDocument(MQDocument doc, const char *filename,
                       SAVE_DOCUMENT_PARAM &param) {
+    currentDocument = doc;
     WriteElements(param.elem);
   }
   void OnSavePastDocument(MQDocument doc, const char *filename,
                           SAVE_DOCUMENT_PARAM &param) {
+    currentDocument = doc;
     WriteElements(param.elem);
   }
   void OnEndDocument(MQDocument doc) {
@@ -111,6 +145,7 @@ class JSMacroPlugin : public MQStationPlugin {
       delete jsContext;
       jsContext = nullptr;
     }
+    currentDocument = nullptr;
   };
   void OnDraw(MQDocument doc, MQScene scene, int width, int height);
   void OnUpdateObjectList(MQDocument doc);
@@ -134,8 +169,9 @@ class JSMacroPlugin : public MQStationPlugin {
   void ExecScriptString(MQDocument doc, const std::string &code);
   ValueHolder ExecScriptCurrentContext(const std::string &code,
                                        const std::string &maybepath = "");
-  static JSValue SetNextTick(JSContext *ctx, JSValueConst this_val, int argc,
-                             JSValueConst *argv);
+  static JSValue RegisterTimer(JSContext *ctx, JSValueConst this_val, int argc,
+                               JSValueConst *argv);
+  static void RemoveTimer(int id);
   static VOID CALLBACK TickTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent,
                                      DWORD dwTime);
   JsContext *GetJsContext(MQDocument doc, const std::vector<std::string> &argv =
@@ -212,13 +248,16 @@ void print_memory_usage(JSRuntime *runtime) {
 }
 
 void dump_exception(JSContext *ctx, JSValue val) {
+  JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
+  plugin->window->SetVisible(true);
+
   if (!JS_IsUndefined(val)) {
     const char *str = JS_ToCString(ctx, val);
     if (str) {
       debug_log(str, 2);
       JS_FreeCString(ctx, str);
     } else {
-      debug_log("[Exception]", 2);    
+      debug_log("[Exception]", 2);
     }
   }
   JSValue e = JS_GetException(ctx);
@@ -316,6 +355,32 @@ JSValue ScriptDir(JSContext *ctx, JSValueConst this_val, int argc,
   return JS_NewString(ctx, plugin->GetScriptDir().c_str());
 }
 
+std::string GetDocumentFileName() {
+  JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
+  if (plugin->currentDocument == nullptr) {
+    return "";
+  }
+  std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+  auto filename = plugin->GetFilename(plugin->currentDocument);
+  return converter.to_bytes(filename);
+}
+
+#if MQPLUGIN_VERSION >= 0x0471
+void InsertDocument(std::string filename, int mergeMode) {
+  JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
+  if (plugin->currentDocument == nullptr) {
+    return;
+  }
+  MQBasePlugin::OPEN_DOCUMENT_OPTION option;
+  option.MergeMode = (MQBasePlugin::OPEN_DOCUMENT_OPTION::MERGE_MODE)mergeMode;
+
+  std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+  auto filenameW = converter.from_bytes(filename);
+
+  plugin->InsertDocument(plugin->currentDocument, filenameW.c_str(), option);
+}
+#endif
+
 VOID CALLBACK JSMacroPlugin::TickTimerProc(HWND hwnd, UINT uMsg,
                                            UINT_PTR idEvent, DWORD dwTime) {
   JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
@@ -326,21 +391,23 @@ VOID CALLBACK JSMacroPlugin::TickTimerProc(HWND hwnd, UINT uMsg,
   }
 }
 
-JSValue JSMacroPlugin::SetNextTick(JSContext *ctx, JSValueConst this_val,
-                                   int argc, JSValueConst *argv) {
+JSValue JSMacroPlugin::RegisterTimer(JSContext *ctx, JSValueConst this_val,
+                                     int argc, JSValueConst *argv) {
   JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
-  if (JS_IsUndefined(argv[0])) {
-    plugin->jsContext->SetNextTick(JS_UNDEFINED, 0);
-    return JS_UNDEFINED;
-  }
+
   uint32_t timerMs = 10;
   if (argc > 1) {
     timerMs = convert_jsvalue<uint32_t>(ctx, argv[1]);
   }
-  UINT_PTR timer =
-      SetTimer(NULL, PLUGIN_ID, timerMs, JSMacroPlugin::TickTimerProc);
-  plugin->jsContext->SetNextTick(JS_DupValue(ctx, argv[0]), timer);
+  plugin->jsContext->RegisterTimer(JS_DupValue(ctx, argv[0]),
+                                   timerMs + GetTickCount(),
+                                   convert_jsvalue<uint32_t>(ctx, argv[2]));
   return JS_UNDEFINED;
+}
+
+void JSMacroPlugin::RemoveTimer(int id) {
+  JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
+  plugin->jsContext->RemoveTimer(id);
 }
 
 JSModuleDef *InitDialogModule(JSContext *ctx);
@@ -359,13 +426,25 @@ static ValueHolder NewProcessObject(JSContext *ctx,
   obj.Set("version", PLUGIN_VERSION);
   obj.Set(("stdout"), fileObj.GetValue());
   obj.Set(("stderr"), fileObj.GetValue());
-  obj.Set(("nextTick"),
-          JS_NewCFunction(ctx, JSMacroPlugin::SetNextTick, "nextTick", 3));
+  obj.Set(("registerTimer"), JS_NewCFunction(ctx, JSMacroPlugin::RegisterTimer,
+                                             "registerTimer", 3));
+  obj.Set(("removeTimer"),
+          JS_NewCFunction(ctx, method_wrapper<JSMacroPlugin::RemoveTimer>,
+                          "removeTimer", 1));
   obj.Set(("showWindow"), JS_NewCFunction(ctx, ShowWindow, "showWindow", 2));
   obj.Set(("load"), JS_NewCFunction(ctx, LoadScript, "load", 2));
   obj.Set(("execScript"),
           JS_NewCFunction(ctx, ExecScriptString, "execScript", 2));
   obj.Set(("scriptDir"), JS_NewCFunction(ctx, ScriptDir, "scriptDir", 0));
+  obj.Set(("getDocumentFileName"),
+          JS_NewCFunction(ctx, method_wrapper<GetDocumentFileName>,
+                          "getDocumentFileName", 0));
+
+#if MQPLUGIN_VERSION >= 0x0471
+  obj.Set(("insertDocument"),
+          JS_NewCFunction(ctx, method_wrapper<InsertDocument>, "insertDocument",
+                          2));
+#endif
   return obj;
 }
 
@@ -419,7 +498,7 @@ const char *JSMacroPlugin::GetPlugInName(void) {
 //---------------------------------------------------------------------------------------------------------------------
 //    ボタンに表示される文字列を返す。
 //---------------------------------------------------------------------------------------------------------------------
-const char *JSMacroPlugin::EnumString(void) { return "JavaScript macro"; }
+const wchar_t *JSMacroPlugin::EnumString(void) { return L"JavaScript macro"; }
 
 //---------------------------------------------------------------------------------------------------------------------
 //    アプリケーションの初期化
@@ -478,21 +557,29 @@ void JSMacroPlugin::OnUpdateObjectList(MQDocument doc) {}
 
 bool JSMacroPlugin::ExecuteCallback(MQDocument doc, void *option) {
   JSContext *ctx;
+
+  int32_t now = GetTickCount();
+  bool update = false;
+  int nextTick = -1;
+
+  if (jsContext != nullptr) {
+    update = jsContext->ConsumeTimer(now);
+    nextTick = jsContext->GetNextTimeout(now);
+  }
+
   int ret = JS_ExecutePendingJob(runtime, &ctx);
   if (ret < 0) {
     dump_exception(ctx);
+    return false;
+  } else if (ret > 0) {
+    nextTick = 1;
+    update = true;
   }
-
-  if (jsContext != nullptr && !JS_IsUndefined(jsContext->nextTickFun)) {
-    JSValue r = jsContext->Tick();
-    if (JS_IsException(r)) {
-      window->SetVisible(true);
-    }
-    JS_FreeValue(ctx, r);
-    return true;
+  if (jsContext != nullptr && nextTick >= 0) {
+    jsContext->SetNextTimer(
+        SetTimer(NULL, PLUGIN_ID, nextTick, JSMacroPlugin::TickTimerProc));
   }
-
-  return ret > 0;
+  return update;
 }
 
 std::string JSMacroPlugin::GetScriptDir() const {
@@ -539,10 +626,9 @@ JsContext *JSMacroPlugin::GetJsContext(MQDocument doc,
       }
       auto global = jsContext->GetGlobal();
       auto unsafe = JS_NewObject(jsContext->ctx);
-      // unsafe->Set(UTF8("fs"), FileSystemTemplate(isolate));
-      // unsafe->Set(UTF8("child_process"), ChildProcessTemplate(isolate));
       global.Set("unsafe", unsafe);
       global["process"].Set("argv", argv);
+
       jsContext->ExecScript(buffer.str(), "core.js");
       global.Delete("unsafe");  // core.js only
     }
@@ -587,6 +673,14 @@ void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
     }
   }
   JS_RunGC(runtime);
+  int32_t next = jsContext->GetNextTimeout(GetTickCount());
+  if (JS_IsJobPending(runtime)) {
+    next = 1;
+  }
+  if (next >= 0) {
+    jsContext->SetNextTimer(
+        SetTimer(NULL, PLUGIN_ID, next, JSMacroPlugin::TickTimerProc));
+  }
 }
 
 void JSMacroPlugin::ExecScriptString(MQDocument doc, const std::string &code) {

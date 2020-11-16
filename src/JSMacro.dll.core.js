@@ -3,7 +3,7 @@ import * as fs from "fs";
 
 // geometry
 class Vector3 {
-	constructor(x,y,z) {
+	constructor(x, y, z) {
 		if (x.x !== undefined) {
 			this.x = x.x; this.y = x.y; this.z = x.z;
 		} else if (x.length === 3) {
@@ -12,7 +12,7 @@ class Vector3 {
 			this.x = x; this.y = y; this.z = z;
 		}
 	}
-	length() { return Math.sqrt(this.x*this.x + this.y*this.y + this.z*this.z); }
+	length() { return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z); }
 	plus(v) { return new Vector3(this.x + v.x, this.y + v.y, this.z + v.z); }
 	minus(v) { return new Vector3(this.x - v.x, this.y - v.y, this.z - v.z); }
 	mul(a) { return new Vector3(this.x * a, this.y * a, this.z * a); }
@@ -23,21 +23,21 @@ class Vector3 {
 		return new Vector3(
 			this.y * v.z - this.z * v.y,
 			this.z * v.x - this.x * v.z,
-			this.x * v.y - this.y * v.x );
+			this.x * v.y - this.y * v.x);
 	}
 	unit() { return this.div(this.length()); }
 	lerp(v, t) { return this.plus(v.minus(this).mul(t)); }
-	toString() { return "(" + this.x + " " + this.y + " " + this.z + ")";}
+	toString() { return "(" + this.x + " " + this.y + " " + this.z + ")"; }
 }
 
 class Plane {
 	constructor(normal, w) {
-	  this._normal = normal;
-	  this._w = w;
+		this._normal = normal;
+		this._w = w;
 	}
 	static fromPoints(a, b, c) {
-	  let n = b.minus(a).cross(c.minus(a)).unit();
-	  return new Plane(n, n.dot(a));
+		let n = b.minus(a).cross(c.minus(a)).unit();
+		return new Plane(n, n.dot(a));
 	}
 	get normal() { return this._normal; }
 	get w() { return this._w; }
@@ -45,9 +45,9 @@ class Plane {
 	toString() { return "Plane(" + this._normal.toString() + "," + this + ")"; }
 }
 
-class Matrix{
+class Matrix {
 	constructor(arr) {
-		this.m = new Float32Array(arr || [1, 0, 0, 0,  0, 1, 0, 0,  0, 0, 1, 0,  0, 0, 0, 1]);
+		this.m = new Float32Array(arr || [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 	}
 	mul(m) { return Matrix.multiply(this, m); }
 	transform(p) {
@@ -56,34 +56,34 @@ class Matrix{
 			return [
 				m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3],
 				m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7],
-				m[8] * p[0] + m[9] * p[1] + m[10]* p[2] + m[11]];
+				m[8] * p[0] + m[9] * p[1] + m[10] * p[2] + m[11]];
 		} else {
 			return new Vector3(
 				m[0] * p.x + m[1] * p.y + m[2] * p.z + m[3],
 				m[4] * p.x + m[5] * p.y + m[6] * p.z + m[7],
-				m[8] * p.x + m[9] * p.y + m[10]* p.z + m[11]);
+				m[8] * p.x + m[9] * p.y + m[10] * p.z + m[11]);
 		}
 	}
-	transformV(p){ return this.transform(p); }
-	static scaleMatrix(x,y,z) {
-		return new Matrix([x, 0, 0, 0,  0, y, 0, 0,  0, 0, z, 0,  0, 0, 0, 1]);
+	transformV(p) { return this.transform(p); }
+	static scaleMatrix(x, y, z) {
+		return new Matrix([x, 0, 0, 0, 0, y, 0, 0, 0, 0, z, 0, 0, 0, 0, 1]);
 	}
-	static translateMatrix(x,y,z) {
-		return new Matrix([1, 0, 0, x,  0, 1, 0, y,  0, 0, 1, z,  0, 0, 0, 1]);
+	static translateMatrix(x, y, z) {
+		return new Matrix([1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z, 0, 0, 0, 1]);
 	}
-	static rotateMatrix(x,y,z,a) {
+	static rotateMatrix(x, y, z, a) {
 		a *= Math.PI / 180;
 		const c = Math.cos(a), s = Math.sin(a);
 		const c1 = 1 - c;
 		return new Matrix([
-			x * x * c1 + c,  x * y * c1 - z * s,  x * z * c1 + y * s,  0,
-			y * x * c1 + z * s,  y * y * c1 + c,  y * z * c1 - x * s,  0,
-			z * x * c1 - y * s,  z * y * c1 + x * s,  z * z * c1 + c,  0,
+			x * x * c1 + c, x * y * c1 - z * s, x * z * c1 + y * s, 0,
+			y * x * c1 + z * s, y * y * c1 + c, y * z * c1 - x * s, 0,
+			z * x * c1 - y * s, z * y * c1 + x * s, z * z * c1 + c, 0,
 			0, 0, 0, 1
 		]);
 	}
 }
-Matrix.multiply = function(m1, m2) {
+Matrix.multiply = function (m1, m2) {
 	let result = new Matrix();
 	let a = m1.m, b = m2.m, r = result.m;
 	r[0] = a[0] * b[0] + a[1] * b[4] + a[2] * b[8] + a[3] * b[12];
@@ -118,19 +118,19 @@ let dialog = {
 	fileDialog: _dialog.fileDialog,
 	folderDialog: _dialog.folderDialog,
 	modalDialog: _dialog.modalDialog,
-	confirmDialog: function(msg) { let r = _dialog.modalDialog({title:msg, items:[msg]}, ["OK", "Cancel"]); return r && r.button == 0; },
-	promptDialog: function(msg, v) { let r = _dialog.modalDialog({title:msg, items:[{type:"text", value:v||"", id:"_"}]}, ["OK"]); return r && r.values['_']; }
+	confirmDialog: function (msg) { let r = _dialog.modalDialog({ title: msg, items: [msg] }, ["OK", "Cancel"]); return r && r.button == 0; },
+	promptDialog: function (msg, v) { let r = _dialog.modalDialog({ title: msg, items: [{ type: "text", value: v || "", id: "_" }] }, ["OK"]); return r && r.values['_']; }
 };
 
 // module
-globalThis.module = (function(){
+globalThis.module = (function () {
 	let modules = {};
-	modules['dialog'] = {exports: dialog, loaded: true};
-	modules['geom'] = {exports: geom, loaded: true};
+	modules['dialog'] = { exports: dialog, loaded: true };
+	modules['geom'] = { exports: geom, loaded: true };
 	// modules['fs'] = {exports: fs, loaded: true};
 	// modules['child_process'] = {exports: child_process, loaded: true};
 	return {
-		require: function(name) {
+		require: function (name) {
 			if (!modules[name]) {
 				let script = fs.readFile(process.scriptDir() + "/" + name);
 				let mod = {
@@ -146,8 +146,8 @@ globalThis.module = (function(){
 			}
 			return modules[name].exports;
 		},
-		include: function(name) {
-			console.log("load: "+ name);
+		include: function (name) {
+			console.log("load: " + name);
 			let script = fs.readFile(process.scriptDir() + name);
 			return process.execScript(script, name);
 		}
@@ -166,31 +166,41 @@ globalThis.console = {
 globalThis.MQMatrix = Matrix;
 globalThis.require = module.require;
 
-globalThis.setTimeout = function(f, timeout) {
+let timerId = 0;
+globalThis.setTimeout = function (f, timeout) {
+	timerId++;
 	let args = arguments.length > 2 ? [arguments[2]] : [];
-	var wf = function(){
+	let wf = function () {
 		f.apply(null, args);
 	};
-	process.nextTick(wf, timeout);
+	process.registerTimer(wf, timeout, timerId);
+	return timerId;
 }
 
-globalThis.setInterval = function(f, interval) {
+globalThis.setInterval = function (f, interval) {
+	timerId++;
+	let tid = timerId;
 	let args = arguments.length > 2 ? [arguments[2]] : [];
-	var wf = function(){
+	let wf = function () {
 		f.apply(null, args);
-		process.nextTick(wf, interval);
+		process.registerTimer(wf, interval, tid);
 	};
-	process.nextTick(wf, interval);
+	process.registerTimer(wf, interval, tid);
+	return tid;
 }
 
-MQObject.prototype.transform = function(tr) {
+globalThis.clearTimeout = globalThis.clearInterval = function (id) {
+	process.removeTimer(id);
+}
+
+MQObject.prototype.transform = function (tr) {
 	const length = this.verts.length;
 	if (typeof tr === "function") {
-		for(let i=0; i< length; i++) {
-			this.verts[i] =  tr(this.verts[i]);
+		for (let i = 0; i < length; i++) {
+			this.verts[i] = tr(this.verts[i]);
 		}
 	} else {
-		for(let i=0; i< length; i++) {
+		for (let i = 0; i < length; i++) {
 			this.verts[i] = tr.transform(this.verts[i]);
 		}
 	}
