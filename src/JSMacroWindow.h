@@ -25,6 +25,7 @@ class JSMacroWindow : public MQWindow {
 
   MQEdit *m_FilePathEdit;
   MQEdit *m_PresetEdit[PRESET_SCRIPT_COUNT];
+  MQEdit *m_EditorCommandEdit;
   MQListBox *m_MessageList;
   static BOOL MQAPICALL ExecuteProc(MQDocument doc, void *option);
   BOOL OnHide(MQWidgetBase *sender, MQDocument doc);
@@ -32,6 +33,7 @@ class JSMacroWindow : public MQWindow {
                       MQListBoxDrawItemParam &param);
   BOOL OnClearClick(MQWidgetBase *sender, MQDocument doc);
   BOOL OnOpenScriptClick(MQWidgetBase *sender, MQDocument doc);
+  BOOL OnEditScriptClick(MQWidgetBase *sender, MQDocument doc);
   BOOL OnExecuteClick(MQWidgetBase *sender, MQDocument doc);
   BOOL OnSavePresetClick(MQWidgetBase *sender, MQDocument doc);
 };

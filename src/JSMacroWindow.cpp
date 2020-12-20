@@ -8,6 +8,8 @@
 #include "MQBasePlugin.h"
 #include "MQSetting.h"
 
+#define DEFAULT_EDITOR_COMMAND L"notepad.exe"
+
 JSMacroWindow::JSMacroWindow(MQWindowBase &parent, WindowCallback &callback)
     : MQWindow(parent), m_callback(callback) {
   setlocale(LC_ALL, "");
@@ -18,6 +20,7 @@ JSMacroWindow::JSMacroWindow(MQWindowBase &parent, WindowCallback &callback)
 
   MQTab *tab = CreateTab(this);
 
+  // Script/Console
   MQFrame *mainFrame = CreateVerticalFrame(tab);
   tab->SetTabTitle(0, L"Script");
 
@@ -50,6 +53,7 @@ JSMacroWindow::JSMacroWindow(MQWindowBase &parent, WindowCallback &callback)
   clearButton->AddClickEvent(this, &JSMacroWindow::OnClearClick);
   this->AddHideEvent(this, &JSMacroWindow::OnHide);
 
+  // Preset
   MQFrame *presetFrame = CreateVerticalFrame(tab);
   tab->SetTabTitle(1, L"Preset");
   for (int i = 0; i < PRESET_SCRIPT_COUNT; i++) {
@@ -62,6 +66,10 @@ JSMacroWindow::JSMacroWindow(MQWindowBase &parent, WindowCallback &callback)
     openButton->AddClickEvent(this, &JSMacroWindow::OnOpenScriptClick);
     openButton->SetTag(i);
 
+    MQButton *editButton = CreateButton(locationFrame, L"Edit");
+    editButton->AddClickEvent(this, &JSMacroWindow::OnEditScriptClick);
+    editButton->SetTag(i);
+
     MQButton *execButton = CreateButton(locationFrame, L"Run");
     execButton->AddClickEvent(this, &JSMacroWindow::OnExecuteClick);
     execButton->SetTag(i);
@@ -72,6 +80,16 @@ JSMacroWindow::JSMacroWindow(MQWindowBase &parent, WindowCallback &callback)
   }
   MQButton *saveButton = CreateButton(presetFrame, L"Save");
   saveButton->AddClickEvent(this, &JSMacroWindow::OnSavePresetClick);
+
+  // Settings
+  MQFrame *settingsFrame = CreateVerticalFrame(tab);
+  tab->SetTabTitle(2, L"Settings");
+  MQFrame *editorFrame = CreateHorizontalFrame(settingsFrame);
+  CreateLabel(editorFrame, L"Editor command");
+  m_EditorCommandEdit = CreateEdit(editorFrame);
+  m_EditorCommandEdit->SetHorzLayout(MQWidgetBase::LAYOUT_FILL);
+  CreateButton(settingsFrame, L"Save")
+      ->AddClickEvent(this, &JSMacroWindow::OnSavePresetClick);
 
   // Load settings
   std::wstring scriptPath;
@@ -86,6 +104,14 @@ JSMacroWindow::JSMacroWindow(MQWindowBase &parent, WindowCallback &callback)
     setting->Load(ss.str().c_str(), scriptPath);
     m_PresetEdit[i]->SetText(scriptPath);
   }
+
+  std::wstring command;
+  setting->Load("editorCommand", command);
+  if (command.length() == 0) {
+    command = DEFAULT_EDITOR_COMMAND;
+  }
+  m_EditorCommandEdit->SetText(command);
+
   GetPluginClass()->CloseSetting(setting);
 }
 
@@ -115,14 +141,38 @@ BOOL JSMacroWindow::OnOpenScriptClick(MQWidgetBase *sender, MQDocument doc) {
   return FALSE;
 }
 
+BOOL JSMacroWindow::OnEditScriptClick(MQWidgetBase *sender, MQDocument doc) {
+  auto path = m_FilePathEdit->GetText();
+  if (sender->GetTag() >= 0) {
+    path = m_PresetEdit[sender->GetTag()]->GetText();
+  }
+  for (auto &c : path) {
+    if (c == ';') {
+      c = 0;
+    }
+  }
+
+  MQSetting *setting = GetPluginClass()->OpenSetting();
+  std::wstring command;
+  setting->Load("editorCommand", command);
+  GetPluginClass()->CloseSetting(setting);
+  if (command.length() == 0) {
+    command = DEFAULT_EDITOR_COMMAND;
+  }
+
+  ShellExecuteW(NULL, L"open", command.c_str(), path.c_str(), NULL,
+                SW_SHOWNORMAL);
+  return FALSE;
+}
+
 BOOL JSMacroWindow::Execute(MQDocument doc, int preset) {
   auto str = m_FilePathEdit->GetText();
-  std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
-  std::string code = converter.to_bytes(str);
   if (preset >= 0 && preset < PRESET_SCRIPT_COUNT) {
-    auto str = m_PresetEdit[preset]->GetText();
+    str = m_PresetEdit[preset]->GetText();
     m_FilePathEdit->SetText(str);
   }
+  std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+  std::string code = converter.to_bytes(str);
   if (code.find("js:") == 0) {
     m_callback.ExecuteString(code.substr(3), doc);
   } else {
@@ -156,6 +206,8 @@ BOOL JSMacroWindow::OnSavePresetClick(MQWidgetBase *sender, MQDocument doc) {
     ss << "presetScriptPath_" << i;
     setting->Save(ss.str().c_str(), path);
   }
+
+  setting->Save("editorCommand", m_EditorCommandEdit->GetText());
   GetPluginClass()->CloseSetting(setting);
   return FALSE;
 }
