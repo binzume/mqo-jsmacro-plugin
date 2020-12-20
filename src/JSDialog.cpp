@@ -17,7 +17,7 @@ JSValue NewFile(JSContext* context, const std::string& path, bool writable);
 class Dialog : public MQDialog {
  public:
   uint64_t button;
-  std::vector<std::pair<ValueHolder, MQEdit*>> itemholders;
+  std::vector<std::tuple<ValueHolder, int, MQWidgetBase*>> itemholders;
   std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
   JSContext* context;
   MQWindow mainWindow;
@@ -43,13 +43,19 @@ class Dialog : public MQDialog {
           std::wstring v = converter.from_bytes(value.To<std::string>());
           auto* w = this->CreateEdit(this, v);
           parent->AddChild(w);
-          itemholders.push_back(std::make_pair(item, w));
+          itemholders.push_back(std::make_tuple(item, 0, w));
         } else if (std::string(type) == "number") {
           std::wstring v = converter.from_bytes(value.To<std::string>());
           auto* w = this->CreateEdit(this, v);
           w->SetNumeric(MQEdit::NUMERIC_DOUBLE);
           parent->AddChild(w);
-          itemholders.push_back(std::make_pair(item, w));
+          itemholders.push_back(std::make_tuple(item, 0, w));
+        } else if (std::string(type) == "checkbox") {
+          std::wstring v = converter.from_bytes(item["label"].To<std::string>());
+          auto* w = this->CreateCheckBox(this, v);
+          w->SetChecked(value.To<bool>());
+          parent->AddChild(w);
+          itemholders.push_back(std::make_tuple(item, 1, w));
         } else if (std::string(type) == "button") {
           std::wstring v = converter.from_bytes(value.To<std::string>());
           auto* w = this->CreateButton(this, v);
@@ -111,12 +117,23 @@ static JSValue ModalDialog(JSContext* ctx, JSValueConst this_val, int argc,
     ValueHolder result(ctx);
     ValueHolder values(ctx);
     for (const auto& item : dialog->itemholders) {
-      std::string value =
-          dialog->converter.to_bytes(item.second->GetText()).c_str();
-      ValueHolder h = item.first;
-      h.Set("value", value.c_str());
-      if (h["id"].IsString()) {
-        values.Set(h["id"].To<std::string>(), value);
+      ValueHolder h = std::get<ValueHolder>(item);
+      int type = std::get<int>(item);
+      if (type == 0) {
+        std::string value =
+            dialog->converter
+                .to_bytes(((MQEdit*)std::get<MQWidgetBase*>(item))->GetText())
+                .c_str();
+        h.Set("value", value);
+        if (h["id"].IsString()) {
+          values.Set(h["id"].To<std::string>(), value);
+        }
+      } else if (type == 1) {
+        bool value = ((MQCheckBox*)std::get<MQWidgetBase*>(item))->GetChecked();
+        h.Set("value", value);
+        if (h["id"].IsString()) {
+          values.Set(h["id"].To<std::string>(), value);
+        }
       }
     }
     result.Set("values", values);
