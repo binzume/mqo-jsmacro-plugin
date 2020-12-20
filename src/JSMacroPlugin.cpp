@@ -108,7 +108,7 @@ class JsContext {
 const char *SUB_COMMAND[PRESET_SCRIPT_COUNT + 1] = {
     "EXEC", "EXEC_P0", "EXEC_P1", "EXEC_P2", "EXEC_P3", "EXEC_P4"};
 const wchar_t *SUB_COMMAND_STR[PRESET_SCRIPT_COUNT + 1] = {
-    L"Run", L"Run 1", L"Run 2", L"Run 3", L"Run 4", L"Run 5"};
+    L"Run", L"Preset 1", L"Preset 2", L"Preset 3", L"Preset 4", L"Preset 5"};
 
 class JSMacroPlugin : public MQStationPlugin {
  public:
