@@ -439,7 +439,7 @@ class MQMaterialWrapper {
   void SetDoubleSided(bool v) { mat->SetDoubleSided(v); }
 
  private:
-  MQColor ToMQColor(ValueHolder& col) {
+  MQColor ToMQColor(ValueHolder col) {
     MQColor c;
     c.r = col["r"].To<float>();
     c.g = col["g"].To<float>();

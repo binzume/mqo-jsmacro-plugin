@@ -24,7 +24,7 @@ class Dialog : public MQDialog {
 
   Dialog(JSContext* ctx)
       : mainWindow(MQWindow::GetMainWindow()),
-        MQDialog(MQWindow::GetMainWindow()),
+        MQDialog(GetSystemWidgetID(MQSystemWidget::MainWindow)),
         button(-1),
         context(ctx) {}
 

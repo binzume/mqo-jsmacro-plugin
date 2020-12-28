@@ -16,7 +16,9 @@
 #include "JSMacroWindow.h"
 #include "MQBasePlugin.h"
 #include "Utils.h"
+#include "MQSetting.h"
 #include "qjsutils.h"
+#include "preference.h"
 
 #define PLUGIN_VERSION "v0.2.0"
 #define PRODUCT_ID 0x7a6e6962
@@ -50,14 +52,16 @@ class JsContext {
   std::vector<TimerEntry> timers;
   JsContext(JSRuntime *runtime, MQDocument doc,
             const std::vector<std::string> &argv = std::vector<std::string>())
-      : ctx(CreateContext(runtime, doc, argv)) {}
+      : ctx(CreateContext(runtime, doc, argv)) {
+    JS_SetContextOpaque(ctx, this);
+  }
   ValueHolder ExecScript(const std::string &code,
                          const std::string &maybepath = "");
   ValueHolder GetGlobal() { return ValueHolder(ctx, JS_GetGlobalObject(ctx)); }
-  void RegisterTimer(JSValue f, int32_t time, uint32_t id = 0) {
+  void RegisterTimerImpl(JSValue f, int32_t time, uint32_t id = 0) {
     timers.push_back(TimerEntry{time, id, f});
   }
-  void RemoveTimer(uint32_t id) {
+  void RemoveTimerImpl(uint32_t id) {
     timers.erase(std::remove_if(timers.begin(), timers.end(),
                                 [id](auto &t) { return t.id == id; }),
                  timers.end());
@@ -103,17 +107,48 @@ class JsContext {
     }
     JS_FreeContext(ctx);
   }
+
+  static JSValue RegisterTimer(JSContext *ctx, JSValueConst this_val, int argc,
+                               JSValueConst *argv) {
+    JsContext *context = GetJsContext(ctx);
+    if (context == nullptr) {
+      return JS_EXCEPTION;
+    }
+
+    uint32_t timerMs = 10;
+    if (argc > 1) {
+      timerMs = convert_jsvalue<uint32_t>(ctx, argv[1]);
+    }
+    context->RegisterTimerImpl(JS_DupValue(ctx, argv[0]), timerMs + GetTickCount(),
+                           convert_jsvalue<uint32_t>(ctx, argv[2]));
+    return JS_UNDEFINED;
+  }
+
+  static JSValue RemoveTimer(JSContext *ctx, int id) {
+    JsContext *context = GetJsContext(ctx);
+    if (context == nullptr) {
+      return JS_EXCEPTION;
+    }
+    context->RemoveTimerImpl(id);
+    return JS_UNDEFINED;
+  }
+
+ protected:
+  static JsContext *GetJsContext(JSContext *ctx) {
+    return (JsContext *)JS_GetContextOpaque(ctx);
+  }
 };
 
-const char *SUB_COMMAND[PRESET_SCRIPT_COUNT + 1] = {
-    "EXEC", "EXEC_P0", "EXEC_P1", "EXEC_P2", "EXEC_P3", "EXEC_P4"};
-const wchar_t *SUB_COMMAND_STR[PRESET_SCRIPT_COUNT + 1] = {
-    L"Run", L"Preset 1", L"Preset 2", L"Preset 3", L"Preset 4", L"Preset 5"};
+const char *SUB_COMMAND[] = {"EXEC",    "EXEC_P0", "EXEC_P1",
+                             "EXEC_P2", "EXEC_P3", "EXEC_P4"};
+const wchar_t *SUB_COMMAND_STR[] = {L"Run",      L"Preset 1", L"Preset 2",
+                                    L"Preset 3", L"Preset 4", L"Preset 5"};
 
 class JSMacroPlugin : public MQStationPlugin {
  public:
   std::map<std::string, std::string> pluginKeyValue;
   std::string currentScriptPath;
+  std::wstring logFilePath;
   JSMacroWindow *window;
   MQDocument currentDocument = nullptr;
   JSMacroPlugin();
@@ -150,33 +185,44 @@ class JSMacroPlugin : public MQStationPlugin {
   void OnDraw(MQDocument doc, MQScene scene, int width, int height);
   void OnUpdateObjectList(MQDocument doc);
   const char *EnumSubCommand(int index) {
-    if (index <= PRESET_SCRIPT_COUNT) {
+    if (index < sizeof(SUB_COMMAND) / sizeof(const char *)) {
       return SUB_COMMAND[index];
     }
     return nullptr;
   };
   const wchar_t *GetSubCommandString(int index) {
-    return SUB_COMMAND_STR[index];
+    if (index < sizeof(SUB_COMMAND) / sizeof(const char *)) {
+      return SUB_COMMAND_STR[index];
+    }
+    return nullptr;
   };
   BOOL OnSubCommand(MQDocument doc, int index) {
     window->Execute(doc, index - 1);
     return TRUE;
   };
   void AddMessage(const std::string &message, int tag = 0) {
+    if (logFilePath.length() > 0) {
+      std::ofstream fout(logFilePath, std::ios::app);
+      fout << message << std::endl;
+      fout.close();
+    }
     if (window) window->AddMessage(message, tag);
   }
   void ExecScript(MQDocument doc, const std::string &jsfile);
   void ExecScriptString(MQDocument doc, const std::string &code);
   ValueHolder ExecScriptCurrentContext(const std::string &code,
                                        const std::string &maybepath = "");
-  static JSValue RegisterTimer(JSContext *ctx, JSValueConst this_val, int argc,
-                               JSValueConst *argv);
-  static void RemoveTimer(int id);
   static VOID CALLBACK TickTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent,
                                      DWORD dwTime);
   JsContext *GetJsContext(MQDocument doc, const std::vector<std::string> &argv =
                                               std::vector<std::string>());
   std::string GetScriptDir() const;
+
+  void LoadSettings() {
+    MQSetting *setting = OpenSetting();
+    setting->Load(PREF_LOG_FILE_PATH, logFilePath);
+    CloseSetting(setting);
+  }
 
  protected:
   JSRuntime *runtime;
@@ -228,12 +274,10 @@ class Callbacks : public WindowCallback {
     MQ_RefreshView(nullptr);
   }
   void OnCloseWindow(MQDocument doc) { plugin->WindowClose(); }
+  void OnSettingUpdated() { plugin->LoadSettings(); }
 };
 
 void debug_log(const std::string s, int tag) {
-  std::ofstream fout("C:/logs/jsmacro.log", std::ios::app);
-  fout << s << std::endl;
-  fout.close();
   JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
   plugin->AddMessage(s, tag);
 }
@@ -391,25 +435,6 @@ VOID CALLBACK JSMacroPlugin::TickTimerProc(HWND hwnd, UINT uMsg,
   }
 }
 
-JSValue JSMacroPlugin::RegisterTimer(JSContext *ctx, JSValueConst this_val,
-                                     int argc, JSValueConst *argv) {
-  JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
-
-  uint32_t timerMs = 10;
-  if (argc > 1) {
-    timerMs = convert_jsvalue<uint32_t>(ctx, argv[1]);
-  }
-  plugin->jsContext->RegisterTimer(JS_DupValue(ctx, argv[0]),
-                                   timerMs + GetTickCount(),
-                                   convert_jsvalue<uint32_t>(ctx, argv[2]));
-  return JS_UNDEFINED;
-}
-
-void JSMacroPlugin::RemoveTimer(int id) {
-  JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
-  plugin->jsContext->RemoveTimer(id);
-}
-
 JSModuleDef *InitDialogModule(JSContext *ctx);
 JSModuleDef *InitFsModule(JSContext *ctx);
 JSModuleDef *InitChildProcessModule(JSContext *ctx);
@@ -426,10 +451,11 @@ static ValueHolder NewProcessObject(JSContext *ctx,
   obj.Set("version", PLUGIN_VERSION);
   obj.Set(("stdout"), fileObj.GetValue());
   obj.Set(("stderr"), fileObj.GetValue());
-  obj.Set(("registerTimer"), JS_NewCFunction(ctx, JSMacroPlugin::RegisterTimer,
+  obj.Set(("registerTimer"),
+          JS_NewCFunction(ctx, JsContext::RegisterTimer,
                                              "registerTimer", 3));
   obj.Set(("removeTimer"),
-          JS_NewCFunction(ctx, method_wrapper<JSMacroPlugin::RemoveTimer>,
+          JS_NewCFunction(ctx, method_wrapper<JsContext::RemoveTimer>,
                           "removeTimer", 1));
   obj.Set(("showWindow"), JS_NewCFunction(ctx, ShowWindow, "showWindow", 2));
   obj.Set(("load"), JS_NewCFunction(ctx, LoadScript, "load", 2));
@@ -504,6 +530,7 @@ const wchar_t *JSMacroPlugin::EnumString(void) { return L"JavaScript macro"; }
 //    アプリケーションの初期化
 //---------------------------------------------------------------------------------------------------------------------
 BOOL JSMacroPlugin::Initialize() {
+  LoadSettings();
   char cwd[1024];
   GetModuleFileName(hInstance, cwd, sizeof cwd);
   debug_log(cwd);
@@ -665,6 +692,7 @@ void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
   jsfile.close();
   if (jsfile.fail()) {
     debug_log("Read error: " + fname, 2);
+    return;
   } else {
     GetJsContext(doc, argv);
     currentScriptPath = argv[0];

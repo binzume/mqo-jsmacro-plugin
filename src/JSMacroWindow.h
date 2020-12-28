@@ -11,6 +11,7 @@ class WindowCallback {
   virtual void OnCloseWindow(MQDocument doc){};
   virtual void ExecuteFile(const std::string &path, MQDocument doc){};
   virtual void ExecuteString(const std::string &code, MQDocument doc){};
+  virtual void OnSettingUpdated(){};
 };
 
 class JSMacroWindow : public MQWindow {
@@ -26,6 +27,7 @@ class JSMacroWindow : public MQWindow {
   MQEdit *m_FilePathEdit;
   MQEdit *m_PresetEdit[PRESET_SCRIPT_COUNT];
   MQEdit *m_EditorCommandEdit;
+  MQEdit *m_LogFilePathEdit;
   MQListBox *m_MessageList;
   static BOOL MQAPICALL ExecuteProc(MQDocument doc, void *option);
   BOOL OnHide(MQWidgetBase *sender, MQDocument doc);
@@ -36,4 +38,6 @@ class JSMacroWindow : public MQWindow {
   BOOL OnEditScriptClick(MQWidgetBase *sender, MQDocument doc);
   BOOL OnExecuteClick(MQWidgetBase *sender, MQDocument doc);
   BOOL OnSavePresetClick(MQWidgetBase *sender, MQDocument doc);
+  BOOL OnSelectEditorButtonClicked(MQWidgetBase *sender, MQDocument doc);
+  BOOL OnSelectLogFileButtonClicked(MQWidgetBase *sender, MQDocument doc);
 };

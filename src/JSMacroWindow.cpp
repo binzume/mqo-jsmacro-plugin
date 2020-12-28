@@ -7,13 +7,14 @@
 
 #include "MQBasePlugin.h"
 #include "MQSetting.h"
-
-#define DEFAULT_EDITOR_COMMAND L"notepad.exe"
+#include "preference.h"
 
 JSMacroWindow::JSMacroWindow(MQWindowBase &parent, WindowCallback &callback)
     : MQWindow(parent), m_callback(callback) {
   setlocale(LC_ALL, "");
   setlocale(LC_CTYPE, "ja_JP.UTF-8");
+
+  auto *plugin = (MQStationPlugin *)(GetPluginClass());
 
   SetTitle(L"JavaScript");
   SetOutSpace(0.4);
@@ -41,6 +42,7 @@ JSMacroWindow::JSMacroWindow(MQWindowBase &parent, WindowCallback &callback)
   MQButton *execButton = CreateButton(locationFrame, L"Run");
   execButton->AddClickEvent(this, &JSMacroWindow::OnExecuteClick);
   execButton->SetTag(-1);
+  RegisterSubCommandButton(plugin, execButton, plugin->EnumSubCommand(0));
 
   // console log
   m_MessageList = CreateListBox(mainFrame);
@@ -73,10 +75,7 @@ JSMacroWindow::JSMacroWindow(MQWindowBase &parent, WindowCallback &callback)
     MQButton *execButton = CreateButton(locationFrame, L"Run");
     execButton->AddClickEvent(this, &JSMacroWindow::OnExecuteClick);
     execButton->SetTag(i);
-    std::stringstream ss;
-    ss << "EXEC_P" << i;
-    RegisterSubCommandButton((MQStationPlugin *)(GetPluginClass()), execButton,
-                             ss.str().c_str());
+    RegisterSubCommandButton(plugin, execButton, plugin->EnumSubCommand(i + 1));
   }
   MQButton *saveButton = CreateButton(presetFrame, L"Save");
   saveButton->AddClickEvent(this, &JSMacroWindow::OnSavePresetClick);
@@ -85,34 +84,48 @@ JSMacroWindow::JSMacroWindow(MQWindowBase &parent, WindowCallback &callback)
   MQFrame *settingsFrame = CreateVerticalFrame(tab);
   tab->SetTabTitle(2, L"Settings");
   MQFrame *editorFrame = CreateHorizontalFrame(settingsFrame);
-  CreateLabel(editorFrame, L"Editor command");
+  CreateLabel(editorFrame, L"Editor:");
   m_EditorCommandEdit = CreateEdit(editorFrame);
   m_EditorCommandEdit->SetHorzLayout(MQWidgetBase::LAYOUT_FILL);
+  CreateButton(editorFrame, L"...")
+      ->AddClickEvent(this, &JSMacroWindow::OnSelectEditorButtonClicked);
+
+  MQFrame *logFileFrame = CreateHorizontalFrame(settingsFrame);
+  CreateLabel(logFileFrame, L"Log file:");
+  m_LogFilePathEdit = CreateEdit(logFileFrame);
+  m_LogFilePathEdit->SetHorzLayout(MQWidgetBase::LAYOUT_FILL);
+  CreateButton(logFileFrame, L"...")
+      ->AddClickEvent(this, &JSMacroWindow::OnSelectLogFileButtonClicked);
+
   CreateButton(settingsFrame, L"Save")
       ->AddClickEvent(this, &JSMacroWindow::OnSavePresetClick);
 
   // Load settings
   std::wstring scriptPath;
-  MQSetting *setting = GetPluginClass()->OpenSetting();
-  setting->Load("lastScriptPath", scriptPath);
+  MQSetting *setting = plugin->OpenSetting();
+  setting->Load(PREF_LAST_SCRIPT_PATH, scriptPath);
   m_FilePathEdit->SetText(scriptPath);
   for (int i = 0; i < PRESET_SCRIPT_COUNT; i++) {
     scriptPath.clear();
     auto path = m_PresetEdit[i]->GetText();
     std::stringstream ss;
-    ss << "presetScriptPath_" << i;
+    ss << PREF_PRESET_SCRIPT_PREFIX << i;
     setting->Load(ss.str().c_str(), scriptPath);
     m_PresetEdit[i]->SetText(scriptPath);
   }
 
   std::wstring command;
-  setting->Load("editorCommand", command);
+  setting->Load(PREF_EDITOR_COMMAND, command);
   if (command.length() == 0) {
     command = DEFAULT_EDITOR_COMMAND;
   }
   m_EditorCommandEdit->SetText(command);
 
-  GetPluginClass()->CloseSetting(setting);
+  std::wstring logFilePath;
+  setting->Load(PREF_LOG_FILE_PATH, logFilePath);
+  m_LogFilePathEdit->SetText(logFilePath);
+
+  plugin->CloseSetting(setting);
 }
 
 void JSMacroWindow::AddMessage(const std::string &message, int tag) {
@@ -154,7 +167,7 @@ BOOL JSMacroWindow::OnEditScriptClick(MQWidgetBase *sender, MQDocument doc) {
 
   MQSetting *setting = GetPluginClass()->OpenSetting();
   std::wstring command;
-  setting->Load("editorCommand", command);
+  setting->Load(PREF_EDITOR_COMMAND, command);
   GetPluginClass()->CloseSetting(setting);
   if (command.length() == 0) {
     command = DEFAULT_EDITOR_COMMAND;
@@ -178,7 +191,7 @@ BOOL JSMacroWindow::Execute(MQDocument doc, int preset) {
   } else {
     m_callback.ExecuteFile(code, doc);
     MQSetting *setting = GetPluginClass()->OpenSetting();
-    setting->Save("lastScriptPath", str);
+    setting->Save(PREF_LAST_SCRIPT_PATH, str);
     GetPluginClass()->CloseSetting(setting);
   }
   return TRUE;
@@ -198,17 +211,43 @@ BOOL JSMacroWindow::OnExecuteClick(MQWidgetBase *sender, MQDocument doc) {
   return FALSE;
 }
 
+BOOL JSMacroWindow::OnSelectEditorButtonClicked(MQWidgetBase *sender,
+                                                MQDocument doc) {
+  auto dialog = new MQOpenFileDialog(*this);
+  dialog->SetFileMustExist(true);
+  dialog->AddFilter(L"Executable(*.exe)|*.exe");
+  if (dialog->Execute()) {
+    m_EditorCommandEdit->SetText(dialog->GetFileName());
+  }
+  return FALSE;
+}
+
+BOOL JSMacroWindow::OnSelectLogFileButtonClicked(MQWidgetBase *sender,
+                                                 MQDocument doc) {
+  auto dialog = new MQSaveFileDialog(*this);
+  dialog->AddFilter(L"Log(*.log)|*.log");
+  if (dialog->Execute()) {
+    m_LogFilePathEdit->SetText(dialog->GetFileName());
+  }
+  return FALSE;
+}
+
 BOOL JSMacroWindow::OnSavePresetClick(MQWidgetBase *sender, MQDocument doc) {
   MQSetting *setting = GetPluginClass()->OpenSetting();
   for (int i = 0; i < PRESET_SCRIPT_COUNT; i++) {
     auto path = m_PresetEdit[i]->GetText();
     std::stringstream ss;
-    ss << "presetScriptPath_" << i;
+    ss << PREF_PRESET_SCRIPT_PREFIX << i;
     setting->Save(ss.str().c_str(), path);
   }
 
-  setting->Save("editorCommand", m_EditorCommandEdit->GetText());
+  setting->Save(PREF_EDITOR_COMMAND, m_EditorCommandEdit->GetText());
+  setting->Save(PREF_LOG_FILE_PATH, m_LogFilePathEdit->GetText());
+
   GetPluginClass()->CloseSetting(setting);
+
+  m_callback.OnSettingUpdated();
+
   return FALSE;
 }
 
