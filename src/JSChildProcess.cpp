@@ -112,7 +112,8 @@ const JSCFunctionListEntry process_funcs[] = {
 };
 
 static int ProcessModuleInit(JSContext* ctx, JSModuleDef* m) {
-  return JS_SetModuleExportList(ctx, m, process_funcs, COUNTOF(process_funcs));
+  return JS_SetModuleExportList(ctx, m, process_funcs,
+                                (int)std::size(process_funcs));
 }
 
 JSModuleDef* InitChildProcessModule(JSContext* ctx) {
@@ -121,6 +122,6 @@ JSModuleDef* InitChildProcessModule(JSContext* ctx) {
   if (!m) {
     return NULL;
   }
-  JS_AddModuleExportList(ctx, m, process_funcs, COUNTOF(process_funcs));
+  JS_AddModuleExportList(ctx, m, process_funcs, (int)std::size(process_funcs));
   return m;
 }

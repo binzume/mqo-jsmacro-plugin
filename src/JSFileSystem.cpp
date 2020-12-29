@@ -153,7 +153,7 @@ const JSCFunctionListEntry fs_funcs[] = {
 
 static int FsModuleInit(JSContext* ctx, JSModuleDef* m) {
   NewClassProto<JSFile>(ctx, "File");
-  return JS_SetModuleExportList(ctx, m, fs_funcs, COUNTOF(fs_funcs));
+  return JS_SetModuleExportList(ctx, m, fs_funcs, (int)std::size(fs_funcs));
 }
 
 JSModuleDef* InitFsModule(JSContext* ctx) {
@@ -162,6 +162,6 @@ JSModuleDef* InitFsModule(JSContext* ctx) {
   if (!m) {
     return NULL;
   }
-  JS_AddModuleExportList(ctx, m, fs_funcs, COUNTOF(fs_funcs));
+  JS_AddModuleExportList(ctx, m, fs_funcs, (int)std::size(fs_funcs));
   return m;
 }

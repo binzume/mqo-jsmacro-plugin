@@ -186,13 +186,13 @@ class JSMacroPlugin : public MQStationPlugin {
   void OnDraw(MQDocument doc, MQScene scene, int width, int height);
   void OnUpdateObjectList(MQDocument doc);
   const char *EnumSubCommand(int index) {
-    if (index < sizeof(SUB_COMMAND) / sizeof(const char *)) {
+    if (index < std::size(SUB_COMMAND)) {
       return SUB_COMMAND[index];
     }
     return nullptr;
   };
   const wchar_t *GetSubCommandString(int index) {
-    if (index < sizeof(SUB_COMMAND) / sizeof(const char *)) {
+    if (index < std::size(SUB_COMMAND)) {
       return SUB_COMMAND_STR[index];
     }
     return nullptr;
