@@ -23,7 +23,7 @@
 
 #define PLUGIN_VERSION "v0.2.0"
 #define PRODUCT_ID 0x7a6e6962
-#define PLUGIN_ID 0x7a6e6964  // 0x7a6e6963
+#define PLUGIN_ID 0x7a6e6963
 
 HINSTANCE hInstance;
 
