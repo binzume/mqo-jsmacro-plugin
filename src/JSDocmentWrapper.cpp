@@ -264,8 +264,7 @@ class MQObjectWrapper {
     JS_SetPropertyStr(ctx, this_obj, "verts", NewVertexArray(ctx, obj));
     JS_SetPropertyStr(ctx, this_obj, "faces", NewFaceArray(ctx, obj));
     if (argc > 0 && JS_IsString(argv[0])) {
-      obj->SetName(
-          utf8ToSjis(convert_jsvalue<std::string>(ctx, argv[0])).c_str());
+      SetName(convert_jsvalue<std::string>(ctx, argv[0]));
     }
   }
 
@@ -288,13 +287,12 @@ class MQObjectWrapper {
   bool Locked() { return obj->GetLocking(); }
   void SetLocked(bool v) { obj->SetLocking(v); }
   std::string GetName() {
-    char buf[256];
-    obj->GetName(buf, sizeof(buf));
-    return sjisToUtf8(buf);
-    // return sjisToUtf8(obj->GetName());
+    std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+    return converter.to_bytes(obj->GetNameW());
   }
-  JSValue SetName(std::string name) {
-    obj->SetName(name.c_str());
+  JSValue SetName(const std::string &name) {
+    std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+    obj->SetName(converter.from_bytes(name).c_str());
     return JS_UNDEFINED;
   }
   void Compact() { obj->Compact(); }
@@ -367,8 +365,7 @@ class MQMaterialWrapper {
   void Init(JSContext* ctx, JSValueConst this_obj, int argc,
             JSValueConst* argv) {
     if (argc > 0 && JS_IsString(argv[0])) {
-      mat->SetName(
-          utf8ToSjis(convert_jsvalue<std::string>(ctx, argv[0])).c_str());
+      SetName(convert_jsvalue<std::string>(ctx, argv[0]));
     }
   }
 
@@ -382,12 +379,12 @@ class MQMaterialWrapper {
   bool GetSelected() { return mat->GetSelected(); }
   void SetSelected(bool s) { mat->SetSelected(s); }
   std::string GetName(JSContext* ctx) {
-    char buf[256];
-    mat->GetName(buf, sizeof(buf));
-    return sjisToUtf8(buf);
+    std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+    return converter.to_bytes(mat->GetNameW());
   }
-  JSValue SetName(JSContext* ctx, std::string name) {
-    mat->SetName(name.c_str());
+  JSValue SetName(std::string name) {
+    std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+    mat->SetName(converter.from_bytes(name).c_str());
     return JS_UNDEFINED;
   }
   JSValue GetColor(JSContext* ctx) {
