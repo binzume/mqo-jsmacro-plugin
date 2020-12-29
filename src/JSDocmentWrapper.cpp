@@ -18,7 +18,7 @@ JSValue NewVec3(JSContext* ctx, MQPoint p) {
   v.Set("x", p.x);
   v.Set("y", p.y);
   v.Set("z", p.z);
-  return v.GetValue();
+  return unwrap(std::move(v));
 }
 
 MQPoint ToMQPoint(JSContext* ctx, JSValueConst value) {
@@ -60,7 +60,7 @@ class VertexArray {
     v.Set("z", p.z);
     v.Set("id", obj->GetVertexUniqueID(index));
     v.Set("refs", obj->GetVertexRefCount(index));
-    return v.GetValue();
+    return unwrap(std::move(v));
   }
 
   void SetVertex(JSContext* ctx, JSValueConst value, int index) {
@@ -75,7 +75,7 @@ class VertexArray {
 template <auto method>
 int delete_property_handler(JSContext* ctx, JSValueConst obj, JSAtom prop) {
   JSValue v = JS_AtomToValue(ctx, prop);
-  JSValue ret = invoke_method(method, ctx, obj, 1, &v);
+  JSValue ret = invoke_function(method, ctx, obj, 1, &v);
   int reti = convert_jsvalue<int>(ctx, ret);
   JS_FreeValue(ctx, v);
   JS_FreeValue(ctx, ret);
@@ -402,19 +402,19 @@ class MQMaterialWrapper {
     }
   }
   JSValue GetAmbientColor(JSContext* ctx) {
-    return FromMQColor(ctx, mat->GetAmbientColor()).GetValue();
+    return unwrap(FromMQColor(ctx, mat->GetAmbientColor()));
   }
   void SetAmbientColor(JSContext* ctx, JSValueConst col) {
     mat->SetAmbientColor(ToMQColor(ValueHolder(ctx, col, true)));
   }
   JSValue GetEmissionColor(JSContext* ctx) {
-    return FromMQColor(ctx, mat->GetEmissionColor()).GetValue();
+    return unwrap(FromMQColor(ctx, mat->GetEmissionColor()));
   }
   void SetEmissionColor(JSContext* ctx, JSValueConst col) {
     mat->SetEmissionColor(ToMQColor(ValueHolder(ctx, col, true)));
   }
   JSValue GetSpecularColor(JSContext* ctx) {
-    return FromMQColor(ctx, mat->GetSpecularColor()).GetValue();
+    return unwrap(FromMQColor(ctx, mat->GetSpecularColor()));
   }
   void SetSpecularColor(JSContext* ctx, JSValueConst col) {
     mat->SetSpecularColor(ToMQColor(ValueHolder(ctx, col, true)));
@@ -704,12 +704,12 @@ class MQDocumentWrapper {
     ValueHolder result(ctx, JS_NewArray(ctx));
     uint32_t len = poly.Length();
     if (len < 3) {
-      return result.GetValue();
+      return unwrap(std::move(result));
     }
 
     std::vector<MQPoint> points(len);
     for (uint32_t i = 0; i < len; i++) {
-      points[i] = ToMQPoint(ctx, poly[i].GetValueNoDup());
+      points[i] = ToMQPoint(ctx, unwrap(poly[i]));
     }
     std::vector<int> indices((size_t)(len - 2) * 3);
     doc->Triangulate(&points[0], (int)points.size(), &indices[0],
@@ -718,7 +718,7 @@ class MQDocumentWrapper {
     for (int i = 0; i < indices.size(); i++) {
       result.Set(i, indices[i]);
     }
-    return result.GetValue();
+    return unwrap(std::move(result));
   }
 };
 

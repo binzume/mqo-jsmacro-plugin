@@ -86,98 +86,27 @@ static inline JSValue to_jsvalue(JSContext* ctx, const std::u8string& v) {
   return JS_NewString(ctx, reinterpret_cast<const char*>(v.c_str()));
 }
 
-class ValueHolder {
-  JSContext* ctx;
-  JSValue value;
-
- public:
-  // TODO: Dup
-  ValueHolder& operator=(const ValueHolder&) = delete;
-
-  ValueHolder(JSContext* ctx, JSValue _value, bool dup = false)
-      : value(_value), ctx(ctx) {
-    if (dup) JS_DupValue(ctx, value);
-  }
-  ValueHolder(JSContext* ctx) : value(JS_NewObject(ctx)), ctx(ctx) {}
-  ValueHolder(ValueHolder&& v) noexcept : value(v.value), ctx(v.ctx) {
-    v.value = JS_UNDEFINED;
-  }
-  ValueHolder(const ValueHolder& v) : value(v.value), ctx(v.ctx) {
-    JS_DupValue(ctx, value);
-  }
-  ~ValueHolder() { JS_FreeValue(ctx, value); }
-  JSValue GetValue() {
-    JS_DupValue(ctx, value);
-    return value;
-  }
-  JSValue GetValueNoDup() { return value; }
-  bool IsString() { return JS_IsString(value); }
-  bool IsObject() { return JS_IsObject(value); }
-  bool IsArray() { return JS_IsArray(ctx, value); }
-  bool IsUndefined() { return JS_IsUndefined(value); }
-  bool IsException() { return JS_IsException(value); }
-  uint32_t Length() { return (*this)["length"].To<uint32_t>(); }
-  template <typename T>
-  T To() {
-    return convert_jsvalue<T>(ctx, value);
-  }
-  ValueHolder operator[](uint32_t index) {
-    return ValueHolder(ctx, JS_GetPropertyUint32(ctx, value, index));
-  }
-  ValueHolder operator[](const char* name) {
-    return ValueHolder(ctx, JS_GetPropertyStr(ctx, value, name));
-  }
-  template <typename TN>
-  void SetFree(TN name, JSValue v) {
-    JSAtom prop = to_atom(name);
-    JS_SetProperty(ctx, value, prop, v);
-    JS_FreeAtom(ctx, prop);
-  }
-  template <typename TN, typename TV>
-  void Set(TN name, TV v) {
-    JSAtom prop = to_atom(name);
-    JS_SetProperty(ctx, value, prop, to_value(v));
-    JS_FreeAtom(ctx, prop);
-  }
-  template <typename TN>
-  void Delete(TN name) {
-    JSAtom prop = to_atom(name);
-    JS_DeleteProperty(ctx, value, prop, JS_PROP_THROW);
-    JS_FreeAtom(ctx, prop);
-  }
-
- private:
-  template <typename T>
-  JSValue to_value(T v) {
-    return to_jsvalue(ctx, v);
-  }
-  JSValue to_value(ValueHolder& v) { return v.GetValue(); }
-  JSAtom to_atom(const std::string& v) { return JS_NewAtom(ctx, v.c_str()); }
-  JSAtom to_atom(const char* v) { return JS_NewAtom(ctx, v); }
-  JSAtom to_atom(uint32_t v) { return JS_NewAtomUInt32(ctx, v); }
-};
-
 template <auto method>
 JSValue method_wrapper(JSContext* ctx, JSValueConst this_val, int argc,
                        JSValueConst* argv) {
-  return invoke_method(method, ctx, this_val, argc, argv);
+  return invoke_function(method, ctx, this_val, argc, argv);
 }
 
 template <auto method>
 JSValue method_wrapper_bind(JSContext* ctx, JSValueConst this_val, int argc,
                             JSValueConst* argv, int magic, JSValue* func_data) {
-  return invoke_method(method, ctx, func_data[0], argc, argv);
+  return invoke_function(method, ctx, func_data[0], argc, argv);
 }
 
 template <auto method>
 JSValue method_wrapper_setter(JSContext* ctx, JSValueConst this_val,
                               JSValueConst arg) {
-  return invoke_method(method, ctx, this_val, 1, &arg);
+  return invoke_function(method, ctx, this_val, 1, &arg);
 }
 
 template <auto method>
 JSValue method_wrapper_getter(JSContext* ctx, JSValueConst this_val) {
-  return invoke_method(method, ctx, this_val, 0, nullptr);
+  return invoke_function(method, ctx, this_val, 0, nullptr);
 }
 
 template <auto method>
@@ -185,25 +114,25 @@ JSValue method_wrapper_append_data(JSContext* ctx, JSValueConst this_val,
                                    int argc, JSValueConst* argv, int magic,
                                    JSValue* func_data) {
   argv[argc] = *func_data;  // TODO: check length of function.
-  return invoke_method(method, ctx, this_val, argc + 1, argv);
+  return invoke_function(method, ctx, this_val, argc + 1, argv);
 }
 
 // function/method type.
 template <typename... Types>
-struct types {};
+struct types {
+  static constexpr int size() { return sizeof...(Types); }
+};
 template <typename T>
 struct arg_info;
 template <typename R, typename T, typename... Args>
 struct arg_info<R (T::*)(Args...)> {
   using prefix = typename types<R, T*>;
   using extra = typename types<Args...>;
-  using extra_seq = decltype(std::make_index_sequence<sizeof...(Args)>());
 };
 template <typename R, typename T, typename... Args>
 struct arg_info<R (T::*)(JSContext*, Args...)> {
   using prefix = typename types<R, T*, JSContext*>;
   using extra = typename types<Args...>;
-  using extra_seq = decltype(std::make_index_sequence<sizeof...(Args)>());
 };
 template <typename R, typename T, typename... Args>
 struct arg_info<R (T::*)(JSContext*, JSValueConst, int, JSValueConst*,
@@ -211,30 +140,26 @@ struct arg_info<R (T::*)(JSContext*, JSValueConst, int, JSValueConst*,
   using prefix =
       typename types<R, T*, JSContext*, JSValueConst, int, JSValueConst*>;
   using extra = typename types<Args...>;
-  using extra_seq = decltype(std::make_index_sequence<sizeof...(Args)>());
 };
 template <typename R, typename... Args>
 struct arg_info<R (*)(Args...)> {
   using prefix = typename types<R>;
   using extra = typename types<Args...>;
-  using extra_seq = decltype(std::make_index_sequence<sizeof...(Args)>());
 };
 template <typename R, typename... Args>
 struct arg_info<R (*)(JSContext*, Args...)> {
   using prefix = typename types<R, JSContext*>;
   using extra = typename types<Args...>;
-  using extra_seq = decltype(std::make_index_sequence<sizeof...(Args)>());
 };
 template <typename R, typename... Args>
 struct arg_info<R (*)(JSContext*, JSValueConst, int, JSValueConst*, Args...)> {
   using prefix =
       typename types<R, JSContext*, JSValueConst, int, JSValueConst*>;
   using extra = typename types<Args...>;
-  using extra_seq = decltype(std::make_index_sequence<sizeof...(Args)>());
 };
 
 template <typename T, typename R, typename... Args>
-inline JSValue invoke_method(R (T::*method)(Args...), JSContext* ctx,
+inline JSValue invoke_function(R (T::*method)(Args...), JSContext* ctx,
                              JSValueConst this_val, int argc,
                              JSValueConst* argv) {
   T* p = (T*)JS_GetOpaque2(ctx, this_val, T::class_id);
@@ -243,17 +168,19 @@ inline JSValue invoke_method(R (T::*method)(Args...), JSContext* ctx,
   }
   using arg = arg_info<decltype(method)>;
   std::tuple prefix(ctx, this_val, argc, argv, p);
-  return invoke_function_impl(arg::prefix(), arg::extra(), arg::extra_seq(),
+  return invoke_function_impl(arg::prefix(), arg::extra(),
+                              std::make_index_sequence<arg::extra::size()>(),
                               prefix, method, ctx, argv);
 }
 
 template <typename R, typename... Args>
-inline JSValue invoke_method(R (*method)(Args...), JSContext* ctx,
+inline JSValue invoke_function(R (*method)(Args...), JSContext* ctx,
                              JSValueConst this_val, int argc,
                              JSValueConst* argv) {
   using arg = arg_info<decltype(method)>;
   std::tuple prefix(ctx, this_val, argc, argv);
-  return invoke_function_impl(arg::prefix(), arg::extra(), arg::extra_seq(),
+  return invoke_function_impl(arg::prefix(), arg::extra(),
+                              std::make_index_sequence<arg::extra::size()>(),
                               prefix, method, ctx, argv);
 }
 
@@ -290,7 +217,7 @@ constexpr JSCFunctionListEntry function_entry(const char* name, uint8_t length,
 template <auto method>
 constexpr JSCFunctionListEntry function_entry(
     const char* name,
-    uint8_t len = arg_info<decltype(method)>::extra_seq::size()) {
+    uint8_t len = arg_info<decltype(method)>::extra::size()) {
   return function_entry(name, len, method_wrapper<method>);
 }
 
@@ -393,7 +320,7 @@ static JSValue simple_constructor(JSContext* ctx, JSValueConst new_target,
   JS_SetOpaque(obj, p);
 
   if constexpr (has_init<T>::value) {
-    invoke_method(&T::Init, ctx, obj, argc, argv);
+    invoke_function(&T::Init, ctx, obj, argc, argv);
   }
 
   return obj;
@@ -405,6 +332,85 @@ void simple_finalizer(JSRuntime* rt, JSValue val) {
   if (s) {
     delete s;
   }
+}
+
+
+class ValueHolder {
+  JSContext* ctx;
+  JSValue value;
+  friend JSValue unwrap(ValueHolder&& v);
+
+ public:
+  // TODO: Dup
+  ValueHolder& operator=(const ValueHolder&) = delete;
+
+  ValueHolder(JSContext* ctx, JSValue _value, bool dup = false)
+      : value(_value), ctx(ctx) {
+    if (dup) JS_DupValue(ctx, value);
+  }
+  ValueHolder(JSContext* ctx) : value(JS_NewObject(ctx)), ctx(ctx) {}
+  ValueHolder(ValueHolder&& v) noexcept : value(v.value), ctx(v.ctx) {
+    v.value = JS_UNDEFINED;
+  }
+  ValueHolder(const ValueHolder& v) : value(v.value), ctx(v.ctx) {
+    JS_DupValue(ctx, value);
+  }
+  ~ValueHolder() { JS_FreeValue(ctx, value); }
+  JSValue GetValue() {
+    JS_DupValue(ctx, value);
+    return value;
+  }
+  JSValue GetValueNoDup() { return value; }
+  bool IsString() { return JS_IsString(value); }
+  bool IsObject() { return JS_IsObject(value); }
+  bool IsArray() { return JS_IsArray(ctx, value); }
+  bool IsUndefined() { return JS_IsUndefined(value); }
+  bool IsException() { return JS_IsException(value); }
+  uint32_t Length() { return (*this)["length"].To<uint32_t>(); }
+  template <typename T>
+  T To() {
+    return convert_jsvalue<T>(ctx, value);
+  }
+  ValueHolder operator[](uint32_t index) {
+    return ValueHolder(ctx, JS_GetPropertyUint32(ctx, value, index));
+  }
+  ValueHolder operator[](const char* name) {
+    return ValueHolder(ctx, JS_GetPropertyStr(ctx, value, name));
+  }
+  template <typename TN>
+  void SetFree(TN name, JSValue v) {
+    JSAtom prop = to_atom(name);
+    JS_SetProperty(ctx, value, prop, v);
+    JS_FreeAtom(ctx, prop);
+  }
+  template <typename TN, typename TV>
+  void Set(TN name, TV v) {
+    JSAtom prop = to_atom(name);
+    JS_SetProperty(ctx, value, prop, to_value(v));
+    JS_FreeAtom(ctx, prop);
+  }
+  template <typename TN>
+  void Delete(TN name) {
+    JSAtom prop = to_atom(name);
+    JS_DeleteProperty(ctx, value, prop, JS_PROP_THROW);
+    JS_FreeAtom(ctx, prop);
+  }
+
+ private:
+  template <typename T>
+  JSValue to_value(T v) {
+    return to_jsvalue(ctx, v);
+  }
+  JSValue to_value(ValueHolder& v) { return v.GetValue(); }
+  JSAtom to_atom(const std::string& v) { return JS_NewAtom(ctx, v.c_str()); }
+  JSAtom to_atom(const char* v) { return JS_NewAtom(ctx, v); }
+  JSAtom to_atom(uint32_t v) { return JS_NewAtomUInt32(ctx, v); }
+};
+
+inline JSValue unwrap(ValueHolder&& v) {
+  JSValue value = v.value;
+  v.value = JS_UNDEFINED;
+  return value;
 }
 
 template <typename T>
