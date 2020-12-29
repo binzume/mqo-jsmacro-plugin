@@ -1,5 +1,6 @@
 #pragma once
 
+#define PRESET_SCRIPT_COUNT 8
 #define DEFAULT_EDITOR_COMMAND L"notepad.exe"
 
 static const char* PREF_LAST_SCRIPT_PATH = "lastScriptPath";

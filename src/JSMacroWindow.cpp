@@ -7,7 +7,6 @@
 
 #include "MQBasePlugin.h"
 #include "MQSetting.h"
-#include "preference.h"
 
 JSMacroWindow::JSMacroWindow(MQWindowBase &parent, WindowCallback &callback)
     : MQWindow(parent), m_callback(callback) {

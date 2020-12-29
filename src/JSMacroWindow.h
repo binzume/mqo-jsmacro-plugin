@@ -3,8 +3,7 @@
 #include <windows.h>
 
 #include "MQWidget.h"
-
-#define PRESET_SCRIPT_COUNT 5
+#include "preference.h"
 
 class WindowCallback {
  public:
