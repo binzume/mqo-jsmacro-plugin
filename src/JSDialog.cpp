@@ -16,17 +16,15 @@ JSValue NewFile(JSContext* context, const std::string& path, bool writable);
 
 class Dialog : public MQDialog {
  public:
+  enum class WidgetType { Edit, CheckBox, ComboBox };
   uint64_t button;
-  std::vector<std::tuple<ValueHolder, int, MQWidgetBase*>> itemholders;
+  std::vector<std::tuple<ValueHolder, WidgetType, MQWidgetBase*>> itemholders;
   std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
   JSContext* context;
   MQWindow mainWindow;
 
-  Dialog(JSContext* ctx)
-      : mainWindow(MQWindow::GetMainWindow()),
-        MQDialog(GetSystemWidgetID(MQSystemWidget::MainWindow)),
-        button(-1),
-        context(ctx) {}
+  Dialog(JSContext* ctx, MQWindowBase parent)
+      : mainWindow(parent), MQDialog(parent), button(-1), context(ctx) {}
 
   void AddItems(ValueHolder& items, MQWidgetBase* parent) {
     for (uint32_t i = 0; i < items.Length(); i++) {
@@ -43,19 +41,30 @@ class Dialog : public MQDialog {
           std::wstring v = converter.from_bytes(value.To<std::string>());
           auto* w = this->CreateEdit(this, v);
           parent->AddChild(w);
-          itemholders.push_back(std::make_tuple(item, 0, w));
+          itemholders.push_back(std::make_tuple(item, WidgetType::Edit, w));
         } else if (std::string(type) == "number") {
           std::wstring v = converter.from_bytes(value.To<std::string>());
           auto* w = this->CreateEdit(this, v);
           w->SetNumeric(MQEdit::NUMERIC_DOUBLE);
           parent->AddChild(w);
-          itemholders.push_back(std::make_tuple(item, 0, w));
+          itemholders.push_back(std::make_tuple(item, WidgetType::Edit, w));
         } else if (std::string(type) == "checkbox") {
-          std::wstring v = converter.from_bytes(item["label"].To<std::string>());
+          std::wstring v =
+              converter.from_bytes(item["label"].To<std::string>());
           auto* w = this->CreateCheckBox(this, v);
           w->SetChecked(value.To<bool>());
           parent->AddChild(w);
-          itemholders.push_back(std::make_tuple(item, 1, w));
+          itemholders.push_back(std::make_tuple(item, WidgetType::Edit, w));
+        } else if (std::string(type) == "combobox") {
+          auto* w = this->CreateComboBox(this);
+          for (uint32_t j = 0; j < item["items"].Length(); j++) {
+            std::wstring s =
+                converter.from_bytes(item["items"][j].To<std::string>());
+            w->AddItem(s);
+          }
+          w->SetCurrentIndex(value.To<int>());
+          parent->AddChild(w);
+          itemholders.push_back(std::make_tuple(item, WidgetType::ComboBox, w));
         } else if (std::string(type) == "button") {
           std::wstring v = converter.from_bytes(value.To<std::string>());
           auto* w = this->CreateButton(this, v);
@@ -88,7 +97,7 @@ static JSValue ModalDialog(JSContext* ctx, JSValueConst this_val, int argc,
     return JS_EXCEPTION;
   }
 
-  auto dialog = new Dialog(ctx);
+  auto dialog = new Dialog(ctx, MQWindow::GetMainWindow());
   ValueHolder params(ctx, argv[0], true);
   ValueHolder buttons(ctx, argv[1], true);
 
@@ -118,8 +127,8 @@ static JSValue ModalDialog(JSContext* ctx, JSValueConst this_val, int argc,
     ValueHolder values(ctx);
     for (const auto& item : dialog->itemholders) {
       ValueHolder h = std::get<ValueHolder>(item);
-      int type = std::get<int>(item);
-      if (type == 0) {
+      Dialog::WidgetType type = std::get<Dialog::WidgetType>(item);
+      if (type == Dialog::WidgetType::Edit) {
         std::string value =
             dialog->converter
                 .to_bytes(((MQEdit*)std::get<MQWidgetBase*>(item))->GetText())
@@ -128,8 +137,15 @@ static JSValue ModalDialog(JSContext* ctx, JSValueConst this_val, int argc,
         if (h["id"].IsString()) {
           values.Set(h["id"].To<std::string>(), value);
         }
-      } else if (type == 1) {
+      } else if (type == Dialog::WidgetType::CheckBox) {
         bool value = ((MQCheckBox*)std::get<MQWidgetBase*>(item))->GetChecked();
+        h.Set("value", value);
+        if (h["id"].IsString()) {
+          values.Set(h["id"].To<std::string>(), value);
+        }
+      } else if (type == Dialog::WidgetType::ComboBox) {
+        int value =
+            ((MQComboBox*)std::get<MQWidgetBase*>(item))->GetCurrentIndex();
         h.Set("value", value);
         if (h["id"].IsString()) {
           values.Set(h["id"].To<std::string>(), value);
@@ -240,7 +256,8 @@ const JSCFunctionListEntry dialog_funcs[] = {
 };
 
 static int DialogModuleInit(JSContext* ctx, JSModuleDef* m) {
-  return JS_SetModuleExportList(ctx, m, dialog_funcs, COUNTOF(dialog_funcs));
+  return JS_SetModuleExportList(ctx, m, dialog_funcs,
+                                (int)std::size(dialog_funcs));
 }
 
 JSModuleDef* InitDialogModule(JSContext* ctx) {
@@ -249,6 +266,6 @@ JSModuleDef* InitDialogModule(JSContext* ctx) {
   if (!m) {
     return NULL;
   }
-  JS_AddModuleExportList(ctx, m, dialog_funcs, COUNTOF(dialog_funcs));
+  JS_AddModuleExportList(ctx, m, dialog_funcs, (int)std::size(dialog_funcs));
   return m;
 }
