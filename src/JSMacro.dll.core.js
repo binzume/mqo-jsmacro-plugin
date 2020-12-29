@@ -25,6 +25,11 @@ class Vector3 {
 			this.z * v.x - this.x * v.z,
 			this.x * v.y - this.y * v.x);
 	}
+	distanceTo(v) { return Math.sqrt(this.distanceToSqr(v)); }
+	distanceToSqr(v) {
+		let dx = this.x - v.x, dy = this.y - v.y, dz = this.z - v.z;
+		return dx * dx + dy * dy + dz * dz;
+	}
 	unit() { return this.div(this.length()); }
 	lerp(v, t) { return this.plus(v.minus(this).mul(t)); }
 	toString() { return "(" + this.x + " " + this.y + " " + this.z + ")"; }
@@ -132,7 +137,7 @@ globalThis.module = (function () {
 	return {
 		require: function (name) {
 			if (!modules[name]) {
-				let script = fs.readFile(process.scriptDir() + "/" + name);
+				let script = fs.readFile(process.scriptDir() + name);
 				let mod = {
 					id: name,
 					filename: name,
@@ -147,9 +152,7 @@ globalThis.module = (function () {
 			return modules[name].exports;
 		},
 		include: function (name) {
-			console.log("load: " + name);
-			let script = fs.readFile(process.scriptDir() + name);
-			return process.execScript(script, name);
+			return process.load(name, false);
 		}
 	};
 })();

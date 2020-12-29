@@ -9,8 +9,7 @@
 class WindowCallback {
  public:
   virtual void OnCloseWindow(MQDocument doc){};
-  virtual void ExecuteFile(const std::string &path, MQDocument doc){};
-  virtual void ExecuteString(const std::string &code, MQDocument doc){};
+  virtual void ExecuteScript(const std::string &path, MQDocument doc){};
   virtual void OnSettingUpdated(){};
 };
 

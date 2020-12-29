@@ -53,7 +53,8 @@ class JsContext {
     InitContext(runtime, doc, argv);
   }
   ValueHolder ExecScript(const std::string &code,
-                         const std::string &maybepath = "");
+                         const std::string &maybepath = "",
+                         bool asmodule = true);
   ValueHolder GetGlobal() { return ValueHolder(ctx, JS_GetGlobalObject(ctx)); }
   void RegisterTimerImpl(JSValue f, int32_t time, uint32_t id = 0) {
     timers.push_back(TimerEntry{time, id, f});
@@ -147,60 +148,54 @@ const wchar_t *SUB_COMMAND_STR[] = {L"Run",      L"Preset 1", L"Preset 2",
 
 class JSMacroPlugin : public MQStationPlugin {
  public:
-  std::map<std::string, std::string> pluginKeyValue;
-  std::string currentScriptPath;
-  std::wstring logFilePath;
-  JSMacroWindow *window;
   MQDocument currentDocument = nullptr;
+  std::map<std::string, std::string> pluginKeyValue;
+
   JSMacroPlugin();
 
-  void GetPlugInID(DWORD *Product, DWORD *ID);
-  const char *GetPlugInName(void);
-  const wchar_t *EnumString(void);
-  BOOL Initialize();
-  void Exit();
-  BOOL Activate(MQDocument doc, BOOL flag);
-  BOOL IsActivated(MQDocument doc);
+  void GetPlugInID(DWORD *Product, DWORD *ID) override;
+  const char *GetPlugInName(void) override;
+  const wchar_t *EnumString(void) override;
+  BOOL Initialize() override;
+  void Exit() override;
+  BOOL Activate(MQDocument doc, BOOL flag) override;
+  BOOL IsActivated(MQDocument doc) override;
   void OnNewDocument(MQDocument doc, const char *filename,
-                     NEW_DOCUMENT_PARAM &param) {
+                     NEW_DOCUMENT_PARAM &param) override {
     currentDocument = doc;
     ParseElements(param.elem);
   }
   void OnSaveDocument(MQDocument doc, const char *filename,
-                      SAVE_DOCUMENT_PARAM &param) {
+                      SAVE_DOCUMENT_PARAM &param) override {
     currentDocument = doc;
     WriteElements(param.elem);
   }
   void OnSavePastDocument(MQDocument doc, const char *filename,
-                          SAVE_DOCUMENT_PARAM &param) {
+                          SAVE_DOCUMENT_PARAM &param) override {
     currentDocument = doc;
     WriteElements(param.elem);
   }
-  void OnEndDocument(MQDocument doc) {
+  void OnEndDocument(MQDocument doc) override {
     if (jsContext) {
       delete jsContext;
       jsContext = nullptr;
     }
     currentDocument = nullptr;
   };
-  void OnDraw(MQDocument doc, MQScene scene, int width, int height);
-  void OnUpdateObjectList(MQDocument doc);
-  const char *EnumSubCommand(int index) {
-    if (index < std::size(SUB_COMMAND)) {
-      return SUB_COMMAND[index];
-    }
-    return nullptr;
+  void OnDraw(MQDocument doc, MQScene scene, int width, int height) override;
+  void OnUpdateObjectList(MQDocument doc) override;
+  const char *EnumSubCommand(int index) override {
+    return index < std::size(SUB_COMMAND) ? SUB_COMMAND[index] : nullptr;
   };
-  const wchar_t *GetSubCommandString(int index) {
-    if (index < std::size(SUB_COMMAND)) {
-      return SUB_COMMAND_STR[index];
-    }
-    return nullptr;
+  const wchar_t *GetSubCommandString(int index) override {
+    return index < std::size(SUB_COMMAND) ? SUB_COMMAND_STR[index] : nullptr;
   };
-  BOOL OnSubCommand(MQDocument doc, int index) {
+  BOOL OnSubCommand(MQDocument doc, int index) override {
+    InitWindow();
     window->Execute(doc, index - 1);
     return TRUE;
   };
+
   void AddMessage(const std::string &message, int tag = 0) {
     if (logFilePath.length() > 0) {
       std::ofstream fout(logFilePath, std::ios::app);
@@ -210,14 +205,21 @@ class JSMacroPlugin : public MQStationPlugin {
     if (window) window->AddMessage(message, tag);
   }
   void ExecScript(MQDocument doc, const std::string &jsfile);
-  void ExecScriptString(MQDocument doc, const std::string &code);
   ValueHolder ExecScriptCurrentContext(const std::string &code,
-                                       const std::string &maybepath = "");
+                                       const std::string &maybepath = "",
+                                       bool asmodule = true);
   static VOID CALLBACK TickTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent,
                                      DWORD dwTime);
   JsContext *GetJsContext(MQDocument doc, const std::vector<std::string> &argv =
                                               std::vector<std::string>());
   std::string GetScriptDir() const;
+
+  void ShowWindow(int visible) {
+    if (visible && window == nullptr) {
+      InitWindow();
+    }
+    if (window) window->SetVisible(visible);
+  }
 
   void LoadSettings() {
     MQSetting *setting = OpenSetting();
@@ -228,7 +230,11 @@ class JSMacroPlugin : public MQStationPlugin {
  protected:
   JSRuntime *runtime;
   JsContext *jsContext;
+  JSMacroWindow *window = nullptr;
+  std::string currentScriptPath;
+  std::wstring logFilePath;
 
+  void InitWindow();
   virtual bool ExecuteCallback(MQDocument doc, void *option);
 
   void ParseElements(MQXmlElement elem) {
@@ -266,16 +272,12 @@ class Callbacks : public WindowCallback {
 
  public:
   Callbacks(JSMacroPlugin *p) : plugin(p) {}
-  void ExecuteFile(const std::string &path, MQDocument doc) {
+  void ExecuteScript(const std::string &path, MQDocument doc) override {
     plugin->ExecScript(doc, path);
     MQ_RefreshView(nullptr);
   }
-  void ExecuteString(const std::string &code, MQDocument doc) {
-    plugin->ExecScriptString(doc, code);
-    MQ_RefreshView(nullptr);
-  }
-  void OnCloseWindow(MQDocument doc) { plugin->WindowClose(); }
-  void OnSettingUpdated() { plugin->LoadSettings(); }
+  void OnCloseWindow(MQDocument doc) override { plugin->WindowClose(); }
+  void OnSettingUpdated() override { plugin->LoadSettings(); }
 };
 
 void debug_log(const std::string s, int tag) {
@@ -294,7 +296,7 @@ void print_memory_usage(JSRuntime *runtime) {
 
 void dump_exception(JSContext *ctx, JSValue val) {
   JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
-  plugin->window->SetVisible(true);
+  plugin->ShowWindow(true);
 
   if (!JS_IsUndefined(val)) {
     const char *str = JS_ToCString(ctx, val);
@@ -361,8 +363,12 @@ static JSValue LoadScript(JSContext *ctx, JSValueConst this_val, int argc,
     jsfile.close();
     if (jsfile.fail()) {
       debug_log(std::string("Read error: ") + path, 2);
+      return JS_EXCEPTION;
     }
-    return plugin->ExecScriptCurrentContext(buffer.str(), path).GetValue();
+    return plugin
+        ->ExecScriptCurrentContext(buffer.str(), path,
+                                   convert_jsvalue<bool>(ctx, argv[1]))
+        .GetValue();
   }
   return JS_UNDEFINED;
 }
@@ -386,11 +392,7 @@ static JSValue ExecScriptString(JSContext *ctx, JSValueConst this_val, int argc,
 static JSValue ShowWindow(JSContext *ctx, JSValueConst this_val, int argc,
                           JSValueConst *argv) {
   JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
-  if (argc >= 1) {
-    plugin->window->SetVisible(convert_jsvalue<bool>(ctx, argv[0]));
-  } else {
-    plugin->window->SetVisible(true);
-  }
+  plugin->ShowWindow(argc < 1 || convert_jsvalue<bool>(ctx, argv[0]));
   return JS_UNDEFINED;
 }
 
@@ -417,7 +419,6 @@ bool InsertDocument(const std::string &filename, int mergeMode) {
   MQBasePlugin::OPEN_DOCUMENT_OPTION option;
   option.MergeMode = (MQBasePlugin::OPEN_DOCUMENT_OPTION::MERGE_MODE)mergeMode;
 
-
   std::filesystem::path path(
       reinterpret_cast<const char8_t *>(filename.c_str()));
 
@@ -441,8 +442,8 @@ bool SaveDocument(const std::string &filename, int productId, int pluginId,
   option.ExportPluginID = pluginId;
   option.ExportIndex = index;
 
-  return plugin->SaveDocument(plugin->currentDocument, fullpath.wstring().c_str(),
-                       option);
+  return plugin->SaveDocument(plugin->currentDocument,
+                              fullpath.wstring().c_str(), option);
 }
 
 VOID CALLBACK JSMacroPlugin::TickTimerProc(HWND hwnd, UINT uMsg,
@@ -472,7 +473,7 @@ static ValueHolder NewProcessObject(JSContext *ctx,
     function_entry<JsContext::RegisterTimer>("registerTimer", 3),
     function_entry<JsContext::RemoveTimer>("removeTimer"),
     function_entry("showWindow", 2, ShowWindow),
-    function_entry("load", 1, LoadScript),
+    function_entry("load", 2, LoadScript),
     function_entry("execScript", 2, ExecScriptString),
     function_entry<&GetDocumentFileName>("getDocumentFileName"),
     function_entry<&SaveDocument>("saveDocument"),
@@ -481,7 +482,8 @@ static ValueHolder NewProcessObject(JSContext *ctx,
     function_entry<&InsertDocument>("insertDocument"),
 #endif
   };
-  JS_SetPropertyFunctionList(ctx, obj.GetValueNoDup(), funcs, (int)std::size(funcs));
+  JS_SetPropertyFunctionList(ctx, obj.GetValueNoDup(), funcs,
+                             (int)std::size(funcs));
 
   obj.Set("version", PLUGIN_VERSION);
   obj.Set(("stdout"), fileObj.GetValue());
@@ -518,7 +520,7 @@ MQBasePlugin *GetPluginClass() {
 //---------------------------------------------------------------------------------------------------------------------
 //    コンストラクタ
 //---------------------------------------------------------------------------------------------------------------------
-JSMacroPlugin::JSMacroPlugin() : jsContext(nullptr) {}
+JSMacroPlugin::JSMacroPlugin() : runtime(JS_NewRuntime()), jsContext(nullptr) {}
 
 //---------------------------------------------------------------------------------------------------------------------
 //    プラグインIDを返す。
@@ -545,18 +547,6 @@ const wchar_t *JSMacroPlugin::EnumString(void) { return L"JavaScript macro"; }
 //---------------------------------------------------------------------------------------------------------------------
 BOOL JSMacroPlugin::Initialize() {
   LoadSettings();
-  char cwd[1024];
-  GetModuleFileName(hInstance, cwd, sizeof cwd);
-  debug_log(cwd);
-
-  // Initialize JS runtime.
-  runtime = JS_NewRuntime();
-
-  static Callbacks callback(this);
-  if (window == nullptr) {
-    MQWindowBase mainwnd = MQWindow::GetMainWindow();
-    window = new JSMacroWindow(mainwnd, callback);
-  }
   debug_log("Initialized.");
   return TRUE;
 }
@@ -576,7 +566,7 @@ void JSMacroPlugin::Exit() {
 //    表示・非表示切り替え要求
 //---------------------------------------------------------------------------------------------------------------------
 BOOL JSMacroPlugin::Activate(MQDocument doc, BOOL flag) {
-  window->SetVisible(flag != 0);
+  ShowWindow(flag != 0);
   return flag;
 }
 
@@ -584,8 +574,7 @@ BOOL JSMacroPlugin::Activate(MQDocument doc, BOOL flag) {
 // 表示・非表示を返す
 //---------------------------------------------------------------------------------------------------------------------
 BOOL JSMacroPlugin::IsActivated(MQDocument doc) {
-  debug_log(window->GetVisible() ? "visible" : "hidden");
-  return window->GetVisible();
+  return window && window->GetVisible();
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -631,14 +620,14 @@ std::string JSMacroPlugin::GetScriptDir() const {
   return "";
 }
 ValueHolder JSMacroPlugin::ExecScriptCurrentContext(
-    const std::string &source, const std::string &maybepath) {
-  return jsContext->ExecScript(source, maybepath);
+    const std::string &source, const std::string &maybepath, bool asmodule) {
+  return jsContext->ExecScript(source, maybepath, asmodule);
 }
 
 ValueHolder JsContext::ExecScript(const std::string &source,
-                                  const std::string &maybepath) {
+                                  const std::string &maybepath, bool asmodule) {
   auto val = JS_Eval(ctx, source.c_str(), source.size(), maybepath.c_str(),
-                     JS_EVAL_TYPE_MODULE);
+                     asmodule ? JS_EVAL_TYPE_MODULE : JS_EVAL_FLAG_STRICT);
   if (JS_IsException(val)) {
     dump_exception(ctx, val);
   }
@@ -662,8 +651,8 @@ JsContext *JSMacroPlugin::GetJsContext(MQDocument doc,
     } else {
       ValueHolder argv(jsContext->ctx, JS_NewArray(jsContext->ctx));
 
-      for (int i = 0; i < args.size() - 1; i++) {
-        argv.Set(i, args[i + 1]);
+      for (size_t i = 0; i < args.size() - 1; i++) {
+        argv.Set(uint32_t(i), args[i + 1]);
       }
       auto global = jsContext->GetGlobal();
       auto unsafe = JS_NewObject(jsContext->ctx);
@@ -691,7 +680,25 @@ std::vector<std::string> SplitString(const std::string &s, char delim) {
   return results;
 }
 
+void JSMacroPlugin::InitWindow() {
+  if (window == nullptr) {
+    static Callbacks callback(this);
+    MQWindowBase mainwnd = MQWindow::GetMainWindow();
+    window = new JSMacroWindow(mainwnd, callback);
+  }
+}
+
 void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
+  if (fname.starts_with("js:")) {
+    std::string code = fname.substr(3);
+    debug_log("> " + code);
+    auto ret = GetJsContext(doc)->ExecScript(code);
+    if (!ret.IsUndefined()) {
+      debug_log(ret.To<std::string>());
+    }
+    JS_RunGC(runtime);
+    return;
+  }
   if (jsContext) {
     delete jsContext;
     jsContext = nullptr;
@@ -723,13 +730,8 @@ void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
     jsContext->SetNextTimer(
         SetTimer(NULL, PLUGIN_ID, next, JSMacroPlugin::TickTimerProc));
   }
-}
 
-void JSMacroPlugin::ExecScriptString(MQDocument doc, const std::string &code) {
-  debug_log("> " + code);
-  auto ret = GetJsContext(doc)->ExecScript(code);
-  if (!ret.IsUndefined()) {
-    debug_log(ret.To<std::string>());
-  }
-  JS_RunGC(runtime);
+  MQSetting *setting = OpenSetting();
+  setting->Save(PREF_LAST_SCRIPT_PATH, fname);
+  CloseSetting(setting);
 }

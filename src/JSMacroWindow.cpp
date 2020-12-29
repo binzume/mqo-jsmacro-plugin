@@ -186,14 +186,7 @@ BOOL JSMacroWindow::Execute(MQDocument doc, int preset) {
   }
   std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
   std::string code = converter.to_bytes(str);
-  if (code.find("js:") == 0) {
-    m_callback.ExecuteString(code.substr(3), doc);
-  } else {
-    m_callback.ExecuteFile(code, doc);
-    MQSetting *setting = GetPluginClass()->OpenSetting();
-    setting->Save(PREF_LAST_SCRIPT_PATH, str);
-    GetPluginClass()->CloseSetting(setting);
-  }
+  m_callback.ExecuteScript(code, doc);
   return TRUE;
 }
 
