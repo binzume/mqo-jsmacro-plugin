@@ -82,6 +82,9 @@ static inline JSValue to_jsvalue(JSContext* ctx, const char* v) {
 static inline JSValue to_jsvalue(JSContext* ctx, const std::string& v) {
   return JS_NewString(ctx, v.c_str());
 }
+static inline JSValue to_jsvalue(JSContext* ctx, const std::u8string& v) {
+  return JS_NewString(ctx, reinterpret_cast<const char*>(v.c_str()));
+}
 
 class ValueHolder {
   JSContext* ctx;
@@ -260,11 +263,17 @@ inline JSValue invoke_function_impl(types<R, Pre...>, types<Args...>,
                                     std::index_sequence<N...>, const T& p, F f,
                                     JSContext* ctx, JSValueConst* argv) {
   if constexpr (std::is_void<R>()) {
-    std::invoke(f, std::get<Pre>(p)..., convert_jsvalue<Args>(ctx, argv[N])...);
+    std::invoke(
+        f, std::get<Pre>(p)...,
+        std::forward<std::remove_cvref_t<Args>>(
+            convert_jsvalue<std::remove_cvref_t<Args>>(ctx, argv[N]))...);
     return JS_UNDEFINED;
   } else {
-    return to_jsvalue(ctx, std::invoke(f, std::get<Pre>(p)...,
-                                       convert_jsvalue<Args>(ctx, argv[N])...));
+    return to_jsvalue(
+        ctx, std::invoke(f, std::get<Pre>(p)...,
+                         std::forward<std::remove_cvref_t<Args>>(
+                             convert_jsvalue<std::remove_cvref_t<Args>>(
+                                 ctx, argv[N]))...));
   }
 }
 
@@ -279,10 +288,10 @@ constexpr JSCFunctionListEntry function_entry(const char* name, uint8_t length,
 }
 
 template <auto method>
-constexpr JSCFunctionListEntry function_entry(const char* name) {
-  return function_entry(name,
-                        (uint8_t)arg_info<decltype(method)>::extra_seq::size(),
-                        method_wrapper<method>);
+constexpr JSCFunctionListEntry function_entry(
+    const char* name,
+    uint8_t len = arg_info<decltype(method)>::extra_seq::size()) {
+  return function_entry(name, len, method_wrapper<method>);
 }
 
 constexpr JSCFunctionListEntry function_entry_getset(
@@ -349,10 +358,10 @@ static int indexed_propery_handler(JSContext* ctx, JSPropertyDescriptor* desc,
   return 1;
 }
 
-template <typename, typename = std::void_t<> >
+template <typename, typename = std::void_t<>>
 struct has_init : std::false_type {};
 template <typename T>
-struct has_init<T, std::void_t<decltype(&T::Init)> > : std::true_type {};
+struct has_init<T, std::void_t<decltype(&T::Init)>> : std::true_type {};
 
 template <typename T>
 inline auto instantiate(JSContext* ctx, JSValueConst new_target, int argc,
