@@ -14,10 +14,10 @@ class JsContext {
     JSValue func;
   };
   std::vector<TimerEntry> timers;
-  JsContext(JSRuntime *runtime, MQDocument doc,
-            const std::vector<std::string> &argv = std::vector<std::string>(),
-            std::map<std::string, std::string> *keyValueStore = nullptr) {
-    InitContext(runtime, doc, argv, keyValueStore);
+  JsContext(JSRuntime *runtime,
+            const std::vector<std::string> &argv = std::vector<std::string>()) {
+    ctx = JS_NewContext(runtime);
+    JS_SetContextOpaque(ctx, this);
   }
   ValueHolder ExecScript(const std::string &code,
                          const std::string &maybepath = "",
@@ -111,7 +111,4 @@ class JsContext {
   static JsContext *GetJsContext(JSContext *ctx) {
     return (JsContext *)JS_GetContextOpaque(ctx);
   }
-  void InitContext(JSRuntime *runtime, MQDocument doc,
-                   const std::vector<std::string> &argv,
-                   std::map<std::string, std::string> *keyValueStore);
 };

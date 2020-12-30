@@ -16,7 +16,6 @@
 
 #include "MQBasePlugin.h"
 #include "MQSetting.h"
-
 #include "JSContext.h"
 #include "JSMacroWindow.h"
 #include "Utils.h"
@@ -36,8 +35,6 @@ BOOL APIENTRY DllMain(HANDLE hModule, DWORD ul_reason_for_call,
   hInstance = (HINSTANCE)hModule;
   return TRUE;
 }
-
-std::vector<std::string> SplitString(const std::string &s, char delim);
 
 class JSMacroPlugin : public MQStationPlugin {
  public:
@@ -80,7 +77,8 @@ class JSMacroPlugin : public MQStationPlugin {
     return index < subCommand.size() ? subCommand[index].c_str() : nullptr;
   };
   const wchar_t *GetSubCommandString(int index) override {
-    return index < subCommandStr.size() ? subCommandStr[index].c_str() : nullptr;
+    return index < subCommandStr.size() ? subCommandStr[index].c_str()
+                                        : nullptr;
   };
   BOOL OnSubCommand(MQDocument doc, int index) override {
     InitWindow();
@@ -178,6 +176,8 @@ class Callbacks : public WindowCallback {
   void OnSettingUpdated() override { plugin->LoadSettings(); }
 };
 
+std::vector<std::string> SplitString(const std::string &s, char delim);
+
 void debug_log(const std::string s, int tag) {
   JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
   plugin->AddMessage(s, tag);
@@ -222,6 +222,147 @@ void dump_exception(JSContext *ctx, JSValue val) {
     JS_FreeValue(ctx, s);
   }
   JS_FreeValue(ctx, e);
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+//    プラグインのベースクラスを返す
+//---------------------------------------------------------------------------------------------------------------------
+MQBasePlugin *GetPluginClass() {
+  static JSMacroPlugin plugin;
+  return &plugin;
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+//    コンストラクタ
+//---------------------------------------------------------------------------------------------------------------------
+JSMacroPlugin::JSMacroPlugin() : runtime(JS_NewRuntime()), jsContext(nullptr) {}
+
+//---------------------------------------------------------------------------------------------------------------------
+//    プラグインIDを返す。
+//---------------------------------------------------------------------------------------------------------------------
+void JSMacroPlugin::GetPlugInID(DWORD *Product, DWORD *ID) {
+  *Product = PRODUCT_ID;
+  *ID = PLUGIN_ID;
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+//    プラグイン名を返す。
+//---------------------------------------------------------------------------------------------------------------------
+const char *JSMacroPlugin::GetPlugInName(void) {
+  return "JavaScript macro runner";
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+//    ボタンに表示される文字列を返す。
+//---------------------------------------------------------------------------------------------------------------------
+const wchar_t *JSMacroPlugin::EnumString(void) { return L"JavaScript macro"; }
+
+//---------------------------------------------------------------------------------------------------------------------
+//    アプリケーションの初期化
+//---------------------------------------------------------------------------------------------------------------------
+BOOL JSMacroPlugin::Initialize() {
+  LoadSettings();
+
+  subCommand.push_back("EXEC");
+  subCommandStr.push_back(L"Run");
+  for (int i = 0; i < PRESET_SCRIPT_COUNT; i++) {
+    subCommand.push_back("EXEC_P" + std::to_string(i));
+    subCommandStr.push_back(L"Preset " + std::to_wstring(i));
+  }
+
+  debug_log("Initialized.");
+  return TRUE;
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+//    アプリケーションの終了
+//---------------------------------------------------------------------------------------------------------------------
+void JSMacroPlugin::Exit() {
+  if (jsContext) {
+    delete jsContext;
+    jsContext = nullptr;
+  }
+  JS_FreeRuntime(runtime);
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+//    表示・非表示切り替え要求
+//---------------------------------------------------------------------------------------------------------------------
+BOOL JSMacroPlugin::Activate(MQDocument doc, BOOL flag) {
+  ShowWindow(flag != 0);
+  return flag;
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+// 表示・非表示を返す
+//---------------------------------------------------------------------------------------------------------------------
+BOOL JSMacroPlugin::IsActivated(MQDocument doc) {
+  return window && window->GetVisible();
+}
+
+//---------------------------------------------------------------------------------------------------------------------
+// 描画
+//---------------------------------------------------------------------------------------------------------------------
+void JSMacroPlugin::OnDraw(MQDocument doc, MQScene scene, int width,
+                           int height) {}
+
+void JSMacroPlugin::OnUpdateObjectList(MQDocument doc) {}
+
+bool JSMacroPlugin::ExecuteCallback(MQDocument doc, void *option) {
+  JSContext *ctx;
+
+  int32_t now = GetTickCount();
+  bool update = false;
+  int nextTick = -1;
+
+  if (jsContext != nullptr) {
+    update = jsContext->ConsumeTimer(now);
+    nextTick = jsContext->GetNextTimeout(now);
+  }
+
+  int ret = JS_ExecutePendingJob(runtime, &ctx);
+  if (ret < 0) {
+    dump_exception(ctx);
+    return false;
+  } else if (ret > 0) {
+    nextTick = 1;
+    update = true;
+  }
+  if (jsContext != nullptr && nextTick >= 0) {
+    jsContext->SetNextTimer(
+        SetTimer(NULL, PLUGIN_ID, nextTick, JSMacroPlugin::TickTimerProc));
+  }
+  return update;
+}
+
+std::string JSMacroPlugin::GetScriptDir() const {
+  size_t p = currentScriptPath.find_last_of("/\\");
+  if (p != std::string::npos) {
+    return currentScriptPath.substr(0, p + 1);
+  }
+  return "";
+}
+ValueHolder JSMacroPlugin::ExecScriptCurrentContext(
+    const std::string &source, const std::string &maybepath, bool asmodule) {
+  return jsContext->ExecScript(source, maybepath, asmodule);
+}
+
+void JSMacroPlugin::InitWindow() {
+  if (window == nullptr) {
+    static Callbacks callback(this);
+    MQWindowBase mainwnd = MQWindow::GetMainWindow();
+    window = new JSMacroWindow(mainwnd, callback);
+  }
+}
+
+VOID CALLBACK JSMacroPlugin::TickTimerProc(HWND hwnd, UINT uMsg,
+                                           UINT_PTR idEvent, DWORD dwTime) {
+  JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
+  KillTimer(hwnd, idEvent);
+  if (plugin->jsContext && plugin->jsContext->tickTimerId == idEvent) {
+    plugin->jsContext->tickTimerId = 0;
+    plugin->BeginCallback(nullptr);
+  }
 }
 
 //---------------------------------------------------------------------------------------------------------------------
@@ -339,16 +480,6 @@ bool SaveDocument(const std::string &filename, int productId, int pluginId,
                               fullpath.wstring().c_str(), option);
 }
 
-VOID CALLBACK JSMacroPlugin::TickTimerProc(HWND hwnd, UINT uMsg,
-                                           UINT_PTR idEvent, DWORD dwTime) {
-  JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
-  KillTimer(hwnd, idEvent);
-  if (plugin->jsContext && plugin->jsContext->tickTimerId == idEvent) {
-    plugin->jsContext->tickTimerId = 0;
-    plugin->BeginCallback(nullptr);
-  }
-}
-
 JSModuleDef *InitDialogModule(JSContext *ctx);
 JSModuleDef *InitFsModule(JSContext *ctx);
 JSModuleDef *InitChildProcessModule(JSContext *ctx);
@@ -384,155 +515,23 @@ static ValueHolder NewProcessObject(JSContext *ctx,
   return obj;
 }
 
-void JsContext::InitContext(JSRuntime *runtime, MQDocument doc,
-                            const std::vector<std::string> &args,
-                            std::map<std::string, std::string> *keyValueStore) {
-  ctx = JS_NewContext(runtime);
-  JS_SetContextOpaque(ctx, this);
-
-  ValueHolder global(ctx, JS_GetGlobalObject(ctx));
-
-  global.Set("process", NewProcessObject(ctx, args));
-
-  // TODO: permission settings.
-  InitChildProcessModule(ctx);
-  InitFsModule(ctx);
-
-  InitDialogModule(ctx);
-  InstallMQDocument(ctx, doc, keyValueStore);
-}
-
-//---------------------------------------------------------------------------------------------------------------------
-//    プラグインのベースクラスを返す
-//---------------------------------------------------------------------------------------------------------------------
-MQBasePlugin *GetPluginClass() {
-  static JSMacroPlugin plugin;
-  return &plugin;
-}
-
-//---------------------------------------------------------------------------------------------------------------------
-//    コンストラクタ
-//---------------------------------------------------------------------------------------------------------------------
-JSMacroPlugin::JSMacroPlugin() : runtime(JS_NewRuntime()), jsContext(nullptr) {}
-
-//---------------------------------------------------------------------------------------------------------------------
-//    プラグインIDを返す。
-//---------------------------------------------------------------------------------------------------------------------
-void JSMacroPlugin::GetPlugInID(DWORD *Product, DWORD *ID) {
-  *Product = PRODUCT_ID;
-  *ID = PLUGIN_ID;
-}
-
-//---------------------------------------------------------------------------------------------------------------------
-//    プラグイン名を返す。
-//---------------------------------------------------------------------------------------------------------------------
-const char *JSMacroPlugin::GetPlugInName(void) {
-  return "JavaScript macro runner";
-}
-
-//---------------------------------------------------------------------------------------------------------------------
-//    ボタンに表示される文字列を返す。
-//---------------------------------------------------------------------------------------------------------------------
-const wchar_t *JSMacroPlugin::EnumString(void) { return L"JavaScript macro"; }
-
-//---------------------------------------------------------------------------------------------------------------------
-//    アプリケーションの初期化
-//---------------------------------------------------------------------------------------------------------------------
-BOOL JSMacroPlugin::Initialize() {
-  LoadSettings();
-
-  subCommand.push_back("EXEC");
-  subCommandStr.push_back(L"Run");
-  for (int i = 0; i < PRESET_SCRIPT_COUNT; i++) {
-    std::stringstream ss("EXEC_P");
-    ss << i;
-    subCommand.push_back(ss.str());
-    std::wstringstream wss(L"Preset ");
-    wss << i;
-    subCommandStr.push_back(wss.str());
-  }
-
-  debug_log("Initialized.");
-  return TRUE;
-}
-
-//---------------------------------------------------------------------------------------------------------------------
-//    アプリケーションの終了
-//---------------------------------------------------------------------------------------------------------------------
-void JSMacroPlugin::Exit() {
-  if (jsContext) {
-    delete jsContext;
-    jsContext = nullptr;
-  }
-  JS_FreeRuntime(runtime);
-}
-
-//---------------------------------------------------------------------------------------------------------------------
-//    表示・非表示切り替え要求
-//---------------------------------------------------------------------------------------------------------------------
-BOOL JSMacroPlugin::Activate(MQDocument doc, BOOL flag) {
-  ShowWindow(flag != 0);
-  return flag;
-}
-
-//---------------------------------------------------------------------------------------------------------------------
-// 表示・非表示を返す
-//---------------------------------------------------------------------------------------------------------------------
-BOOL JSMacroPlugin::IsActivated(MQDocument doc) {
-  return window && window->GetVisible();
-}
-
-//---------------------------------------------------------------------------------------------------------------------
-// 描画
-//---------------------------------------------------------------------------------------------------------------------
-void JSMacroPlugin::OnDraw(MQDocument doc, MQScene scene, int width,
-                           int height) {}
-
-void JSMacroPlugin::OnUpdateObjectList(MQDocument doc) {}
-
-bool JSMacroPlugin::ExecuteCallback(MQDocument doc, void *option) {
-  JSContext *ctx;
-
-  int32_t now = GetTickCount();
-  bool update = false;
-  int nextTick = -1;
-
-  if (jsContext != nullptr) {
-    update = jsContext->ConsumeTimer(now);
-    nextTick = jsContext->GetNextTimeout(now);
-  }
-
-  int ret = JS_ExecutePendingJob(runtime, &ctx);
-  if (ret < 0) {
-    dump_exception(ctx);
-    return false;
-  } else if (ret > 0) {
-    nextTick = 1;
-    update = true;
-  }
-  if (jsContext != nullptr && nextTick >= 0) {
-    jsContext->SetNextTimer(
-        SetTimer(NULL, PLUGIN_ID, nextTick, JSMacroPlugin::TickTimerProc));
-  }
-  return update;
-}
-
-std::string JSMacroPlugin::GetScriptDir() const {
-  size_t p = currentScriptPath.find_last_of("/\\");
-  if (p != std::string::npos) {
-    return currentScriptPath.substr(0, p + 1);
-  }
-  return "";
-}
-ValueHolder JSMacroPlugin::ExecScriptCurrentContext(
-    const std::string &source, const std::string &maybepath, bool asmodule) {
-  return jsContext->ExecScript(source, maybepath, asmodule);
-}
-
 JsContext *JSMacroPlugin::GetJsContext(MQDocument doc,
                                        const std::vector<std::string> &args) {
   if (!jsContext) {
-    jsContext = new JsContext(runtime, doc, args, &pluginKeyValue);
+    jsContext = new JsContext(runtime, args);
+    auto ctx = jsContext->ctx;
+    ValueHolder global(ctx, JS_GetGlobalObject(ctx));
+
+    global.Set("process", NewProcessObject(ctx, args));
+
+    // TODO: permission settings.
+    InitChildProcessModule(ctx);
+    InitFsModule(ctx);
+
+    InitDialogModule(ctx);
+    InstallMQDocument(ctx, doc, &pluginKeyValue);
+
+
     TCHAR path[MAX_PATH];
     GetModuleFileName(hInstance, path, MAX_PATH);
     std::string coreJsName = std::string(path) + ".core.js";
@@ -575,13 +574,6 @@ std::vector<std::string> SplitString(const std::string &s, char delim) {
   return results;
 }
 
-void JSMacroPlugin::InitWindow() {
-  if (window == nullptr) {
-    static Callbacks callback(this);
-    MQWindowBase mainwnd = MQWindow::GetMainWindow();
-    window = new JSMacroWindow(mainwnd, callback);
-  }
-}
 
 void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
   if (fname.starts_with("js:")) {
