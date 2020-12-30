@@ -11,8 +11,8 @@
 
 - git clone .../mqo-jsmacro-plugin
 - cd mqo-jsmacro-plugin
+- (copy mqsdk into mqsdk folder.)
 - git submodule init
-- # copy mqsdk into mqsdk folder.
 - premake5 vs2019
 
 `_build` ディレクトリの下に Visual Studio のソリューションとプロジェクトが出力されます．
