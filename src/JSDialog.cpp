@@ -54,7 +54,7 @@ class Dialog : public MQDialog {
           auto* w = this->CreateCheckBox(this, v);
           w->SetChecked(value.To<bool>());
           parent->AddChild(w);
-          itemholders.push_back(std::make_tuple(item, WidgetType::Edit, w));
+          itemholders.push_back(std::make_tuple(item, WidgetType::CheckBox, w));
         } else if (std::string(type) == "combobox") {
           auto* w = this->CreateComboBox(this);
           for (uint32_t j = 0; j < item["items"].Length(); j++) {
