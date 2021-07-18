@@ -14,10 +14,10 @@
 #include <string>
 #include <vector>
 
-#include "MQBasePlugin.h"
-#include "MQSetting.h"
 #include "JSContext.h"
 #include "JSMacroWindow.h"
+#include "MQBasePlugin.h"
+#include "MQSetting.h"
 #include "Utils.h"
 #include "preference.h"
 
@@ -53,26 +53,48 @@ class JSMacroPlugin : public MQStationPlugin {
                      NEW_DOCUMENT_PARAM &param) override {
     currentDocument = doc;
     ParseElements(param.elem);
+    EmitEvent("OnNewDocument");
   }
   void OnSaveDocument(MQDocument doc, const char *filename,
                       SAVE_DOCUMENT_PARAM &param) override {
     currentDocument = doc;
+    EmitEvent("OnSaveDocument");
     WriteElements(param.elem);
   }
   void OnSavePastDocument(MQDocument doc, const char *filename,
                           SAVE_DOCUMENT_PARAM &param) override {
     currentDocument = doc;
+    EmitEvent("OnSavePastDocument");
     WriteElements(param.elem);
   }
   void OnEndDocument(MQDocument doc) override {
+    EmitEvent("OnEndDocument");
     if (jsContext) {
       delete jsContext;
       jsContext = nullptr;
     }
     currentDocument = nullptr;
   };
-  void OnDraw(MQDocument doc, MQScene scene, int width, int height) override;
-  void OnUpdateObjectList(MQDocument doc) override;
+  void OnDraw(MQDocument doc, MQScene scene, int width, int height) override {}
+
+  void OnObjectSelected(MQDocument doc) override {
+    EmitEvent("OnObjectSelected");
+  }
+  void OnUpdateObjectList(MQDocument doc) override {
+    EmitEvent("OnUpdateObjectList");
+  }
+  void OnMaterialModified(MQDocument doc) override {
+    EmitEvent("OnMaterialModified");
+  }
+  void OnUpdateMaterialList(MQDocument doc) override {
+    EmitEvent("OnUpdateMaterialList");
+  }
+  void OnChangeEditOption(MQDocument doc, EDITOPTION_TYPE trigger) override {
+    EmitEvent("OnChangeEditOption");
+  }
+  void OnConfigurationChanged(MQDocument doc) override {
+    EmitEvent("OnConfigurationChanged");
+  }
   const char *EnumSubCommand(int index) override {
     return index < subCommand.size() ? subCommand[index].c_str() : nullptr;
   };
@@ -160,6 +182,27 @@ class JSMacroPlugin : public MQStationPlugin {
       item->SetAttribute("key", kv.first.c_str());
       item->SetText(kv.second.c_str());
     }
+  }
+
+  void EmitEvent(const std::string &msg) {
+    if (!jsContext) {
+      return;
+    }
+    auto process = jsContext->GetGlobal()["process"];
+    auto onmessage = process["onmessage"];
+    if (!onmessage.IsFunction()) {
+      return;
+    }
+    auto ctx = jsContext->ctx;
+    auto name = to_jsvalue(ctx, msg);
+    auto fn = onmessage.GetValue();
+    JSValue r = JS_Call(ctx, fn, fn, 1, &name);
+    if (JS_IsException(r)) {
+      dump_exception(ctx, r);
+    }
+    JS_FreeValue(ctx, r);
+    JS_FreeValue(ctx, fn);
+    JS_FreeValue(ctx, name);
   }
 };
 
@@ -303,10 +346,6 @@ BOOL JSMacroPlugin::IsActivated(MQDocument doc) {
 //---------------------------------------------------------------------------------------------------------------------
 // 描画
 //---------------------------------------------------------------------------------------------------------------------
-void JSMacroPlugin::OnDraw(MQDocument doc, MQScene scene, int width,
-                           int height) {}
-
-void JSMacroPlugin::OnUpdateObjectList(MQDocument doc) {}
 
 bool JSMacroPlugin::ExecuteCallback(MQDocument doc, void *option) {
   JSContext *ctx;
@@ -531,7 +570,6 @@ JsContext *JSMacroPlugin::GetJsContext(MQDocument doc,
     InitDialogModule(ctx);
     InstallMQDocument(ctx, doc, &pluginKeyValue);
 
-
     TCHAR path[MAX_PATH];
     GetModuleFileName(hInstance, path, MAX_PATH);
     std::string coreJsName = std::string(path) + ".core.js";
@@ -573,7 +611,6 @@ std::vector<std::string> SplitString(const std::string &s, char delim) {
   }
   return results;
 }
-
 
 void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
   if (fname.starts_with("js:")) {

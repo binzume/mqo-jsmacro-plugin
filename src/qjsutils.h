@@ -336,11 +336,11 @@ void simple_finalizer(JSRuntime* rt, JSValue val) {
 
 
 class ValueHolder {
-  JSContext* ctx;
   JSValue value;
   friend JSValue unwrap(ValueHolder&& v);
 
  public:
+  JSContext* ctx;
   // TODO: Dup
   ValueHolder& operator=(const ValueHolder&) = delete;
 
@@ -366,6 +366,7 @@ class ValueHolder {
   bool IsArray() { return JS_IsArray(ctx, value); }
   bool IsUndefined() { return JS_IsUndefined(value); }
   bool IsException() { return JS_IsException(value); }
+  bool IsFunction() { return JS_IsFunction(ctx, value); }
   uint32_t Length() { return (*this)["length"].To<uint32_t>(); }
   template <typename T>
   T To() {
