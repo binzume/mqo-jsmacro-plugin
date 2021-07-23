@@ -27,6 +27,12 @@
 
 HINSTANCE hInstance;
 
+JSModuleDef *InitDialogModule(JSContext *ctx);
+JSModuleDef *InitFsModule(JSContext *ctx);
+JSModuleDef *InitChildProcessModule(JSContext *ctx);
+void InstallMQDocument(JSContext *ctx, MQDocument doc,
+                       std::map<std::string, std::string> *keyValue = nullptr);
+
 //---------------------------------------------------------------------------------------------------------------------
 //  DllMain
 //---------------------------------------------------------------------------------------------------------------------
@@ -68,15 +74,14 @@ class JSMacroPlugin : public MQStationPlugin {
     WriteElements(param.elem);
   }
   void OnEndDocument(MQDocument doc) override {
-    EmitEvent("OnEndDocument");
-    if (jsContext) {
-      delete jsContext;
-      jsContext = nullptr;
-    }
+    DisposeJsContext();
     currentDocument = nullptr;
   };
   void OnDraw(MQDocument doc, MQScene scene, int width, int height) override {}
 
+  void OnObjectModified(MQDocument doc) override {
+    EmitEvent("OnObjectModified");
+  }
   void OnObjectSelected(MQDocument doc) override {
     EmitEvent("OnObjectSelected");
   }
@@ -194,15 +199,32 @@ class JSMacroPlugin : public MQStationPlugin {
       return;
     }
     auto ctx = jsContext->ctx;
-    auto name = to_jsvalue(ctx, msg);
-    auto fn = onmessage.GetValue();
-    JSValue r = JS_Call(ctx, fn, fn, 1, &name);
-    if (JS_IsException(r)) {
-      dump_exception(ctx, r);
+    JSValue name = to_jsvalue(ctx, msg);
+    JSValue func = onmessage.GetValue();
+    JSValue result = JS_Call(ctx, func, func, 1, &name);
+    if (JS_IsException(result)) {
+      dump_exception(ctx, result);
     }
-    JS_FreeValue(ctx, r);
-    JS_FreeValue(ctx, fn);
+    JS_FreeValue(ctx, result);
+    JS_FreeValue(ctx, func);
     JS_FreeValue(ctx, name);
+    int32_t next = jsContext->GetNextTimeout(GetTickCount());
+    if (JS_IsJobPending(runtime)) {
+      next = 1;
+    }
+    if (next >= 0) {
+      jsContext->SetNextTimer(
+          SetTimer(NULL, PLUGIN_ID, next, JSMacroPlugin::TickTimerProc));
+    }
+  }
+
+  void DisposeJsContext() {
+    if (jsContext) {
+      EmitEvent("_dispose");
+      delete jsContext;
+      jsContext = nullptr;
+      JS_RunGC(runtime);
+    }
   }
 };
 
@@ -321,10 +343,7 @@ BOOL JSMacroPlugin::Initialize() {
 //    アプリケーションの終了
 //---------------------------------------------------------------------------------------------------------------------
 void JSMacroPlugin::Exit() {
-  if (jsContext) {
-    delete jsContext;
-    jsContext = nullptr;
-  }
+  DisposeJsContext();
   JS_FreeRuntime(runtime);
 }
 
@@ -519,11 +538,31 @@ bool SaveDocument(const std::string &filename, int productId, int pluginId,
                               fullpath.wstring().c_str(), option);
 }
 
-JSModuleDef *InitDialogModule(JSContext *ctx);
-JSModuleDef *InitFsModule(JSContext *ctx);
-JSModuleDef *InitChildProcessModule(JSContext *ctx);
-void InstallMQDocument(JSContext *ctx, MQDocument doc,
-                       std::map<std::string, std::string> *keyValue);
+static int DefineModuleInit(JSContext *ctx, JSModuleDef *m) {
+  ValueHolder meta(ctx, JS_GetImportMeta(ctx, m));
+  ValueHolder exportList = meta["exports"];
+  for (int i = 0; i < exportList.Length(); i++) {
+    JS_SetModuleExport(ctx, m, exportList[i]["name"].To<std::string>().c_str(),
+                       exportList[i]["value"].GetValue());
+  }
+  return 0;
+}
+
+void DefineModule(JSContext *ctx, const std::string &name,
+                  JSValueConst exports) {
+  ValueHolder exportList(ctx, exports, true);
+  if (!exportList.IsArray()) {
+    return;
+  }
+
+  JSModuleDef *m = JS_NewCModule(ctx, name.c_str(), DefineModuleInit);
+  ValueHolder meta(ctx, JS_GetImportMeta(ctx, m));
+  meta.Define("exports", JS_DupValue(ctx, exports));
+
+  for (int i = 0; i < exportList.Length(); i++) {
+    JS_AddModuleExport(ctx, m, exportList[i]["name"].To<std::string>().c_str());
+  }
+}
 
 static ValueHolder NewProcessObject(JSContext *ctx,
                                     const std::vector<std::string> &args) {
@@ -541,6 +580,7 @@ static ValueHolder NewProcessObject(JSContext *ctx,
     function_entry<&GetDocumentFileName>("getDocumentFileName"),
     function_entry<&SaveDocument>("saveDocument"),
     function_entry<&ScriptDir>("scriptDir"),
+    function_entry<&DefineModule>("defineModule"),
 #if MQPLUGIN_VERSION >= 0x0471
     function_entry<&InsertDocument>("insertDocument"),
 #endif
@@ -559,9 +599,9 @@ JsContext *JSMacroPlugin::GetJsContext(MQDocument doc,
   if (!jsContext) {
     jsContext = new JsContext(runtime, args);
     auto ctx = jsContext->ctx;
-    ValueHolder global(ctx, JS_GetGlobalObject(ctx));
-
-    global.Set("process", NewProcessObject(ctx, args));
+    ValueHolder global = jsContext->GetGlobal();
+    ValueHolder processObj = NewProcessObject(ctx, args);
+    global.Set("process", processObj);
 
     // TODO: permission settings.
     InitChildProcessModule(ctx);
@@ -586,10 +626,10 @@ JsContext *JSMacroPlugin::GetJsContext(MQDocument doc,
       for (size_t i = 0; i < args.size() - 1; i++) {
         argv.Set(uint32_t(i), args[i + 1]);
       }
-      auto global = jsContext->GetGlobal();
+      processObj.Set("argv", argv);
+
       auto unsafe = JS_NewObject(jsContext->ctx);
       global.Set("unsafe", unsafe);
-      global["process"].Set("argv", argv);
 
       jsContext->ExecScript(buffer.str(), "core.js");
       global.Delete("unsafe");  // core.js only
@@ -623,10 +663,7 @@ void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
     JS_RunGC(runtime);
     return;
   }
-  if (jsContext) {
-    delete jsContext;
-    jsContext = nullptr;
-  }
+  DisposeJsContext();
 
   debug_log(std::string("Run: ") + fname);
   auto argv = SplitString(fname, ';');
