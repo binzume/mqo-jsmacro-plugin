@@ -5,6 +5,7 @@
 #include <sstream>
 #include <vector>
 
+#include "MQBasePlugin.h"
 #include "MQWidget.h"
 #include "Utils.h"
 #include "qjsutils.h"
@@ -13,12 +14,28 @@
 // Vertics
 //---------------------------------------------------------------------------------------------------------------------
 
-JSValue NewVec3(JSContext* ctx, MQPoint p) {
+JSValue NewVec3(JSContext* ctx, const MQPoint &p) {
   ValueHolder v(ctx);
   v.Set("x", p.x);
   v.Set("y", p.y);
   v.Set("z", p.z);
   return unwrap(std::move(v));
+}
+
+JSValue ToJSValue(JSContext* ctx, const MQAngle& a) {
+  ValueHolder v(ctx);
+  v.Set("head", a.head);
+  v.Set("pitch", a.pitch);
+  v.Set("bank", a.bank);
+  return unwrap(std::move(v));
+}
+
+JSValue ToJSValue(JSContext* ctx, const MQMatrix& mat) {
+  ValueHolder ret(ctx, JS_NewArray(ctx));
+  for (int i = 0; i < 16; i++) {
+    ret.Set(i, mat.t[i]);
+  }
+  return unwrap(std::move(ret));
 }
 
 MQPoint ToMQPoint(JSContext* ctx, JSValueConst value) {
@@ -29,12 +46,18 @@ MQPoint ToMQPoint(JSContext* ctx, JSValueConst value) {
   return MQPoint(v["x"].To<float>(), v["y"].To<float>(), v["z"].To<float>());
 }
 
-class VertexArray {
+MQAngle ToMQAngle(JSContext* ctx, JSValueConst value) {
+  ValueHolder angle(ctx, value, true);
+  return MQAngle(angle["head"].To<float>(), angle["pitch"].To<float>(),
+                 angle["bank"].To<float>());
+}
+
+class VertexArray : public JSClassBase<VertexArray> {
  public:
   MQObject obj;
   VertexArray(MQObject obj) : obj(obj) {}
 
-  static JSClassID class_id;
+  //  static JSClassID class_id;
   static const JSCFunctionListEntry proto_funcs[];
 
   int Length() { return obj->GetVertexCount(); }
@@ -87,7 +110,7 @@ static JSClassExoticMethods VertexArray_exotic{
                                                 &VertexArray::SetVertex>,
     .delete_property = delete_property_handler<&VertexArray::DeleteVertex>};
 
-JSClassID VertexArray::class_id;
+// JSClassID VertexArray::class_id;
 
 const JSCFunctionListEntry VertexArray::proto_funcs[] = {
     function_entry_getset<&Length>("length"),
@@ -243,11 +266,74 @@ JSValue NewFaceArray(JSContext* ctx, MQObject o) {
 }
 
 //---------------------------------------------------------------------------------------------------------------------
+// MQObjectTransform
+//---------------------------------------------------------------------------------------------------------------------
+JSValue NewObjectTransform(JSContext* ctx, MQObject o);
+
+class ObjectTransform : public JSClassBase<ObjectTransform> {
+ public:
+  static const JSCFunctionListEntry proto_funcs[];
+
+  MQObject obj;
+  ObjectTransform(MQObject obj) : obj(obj) {}
+
+  JSValue GetScale(JSContext* ctx) { return NewVec3(ctx, obj->GetScaling()); }
+  void SetScale(JSContext* ctx, JSValue v) {
+    obj->SetScaling(ToMQPoint(ctx, v));
+  }
+  JSValue GetPosition(JSContext* ctx) {
+    return NewVec3(ctx, obj->GetTranslation());
+  }
+  void SetPosition(JSContext* ctx, JSValue v) {
+    obj->SetTranslation(ToMQPoint(ctx, v));
+  }
+  JSValue GetRotation(JSContext* ctx) {
+    return ToJSValue(ctx, obj->GetRotation());
+  }
+  void SetRotation(JSContext* ctx, JSValue v) {
+    obj->SetRotation(ToMQAngle(ctx, v));
+  }
+  JSValue GetMatrix(JSContext* ctx) {
+    return ToJSValue(ctx, obj->GetLocalMatrix());
+  }
+  JSValue SetMatrix(JSContext* ctx, JSValue v) {
+    ValueHolder matarray(ctx, v, true);
+    if (!matarray.IsArray()) {
+      return JS_EXCEPTION;
+    }
+    MQMatrix mat;
+    for (int i = 0; i < 16; i++) {
+      mat.t[i] = matarray[i].To<float>();
+    }
+    obj->SetLocalMatrix(mat);
+    return JS_UNDEFINED;
+  }
+  JSValue GetInverseMatrix(JSContext* ctx) {
+    return ToJSValue(ctx, obj->GetLocalInverseMatrix());
+  }
+};
+
+const JSCFunctionListEntry ObjectTransform::proto_funcs[] = {
+    function_entry_getset<&GetScale, &SetScale>("scale"),
+    function_entry_getset<&GetPosition, &SetPosition>("position"),
+    function_entry_getset<&GetRotation, &SetRotation>("rotation"),
+    function_entry_getset<&GetMatrix, &SetMatrix>("matrix"),
+    function_entry_getset<&GetInverseMatrix>("matrixInverse"),
+};
+
+JSValue NewObjectTransform(JSContext* ctx, MQObject o) {
+  JSValue obj = JS_NewObjectClass(ctx, ObjectTransform::class_id);
+  if (JS_IsException(obj)) return obj;
+  JS_SetOpaque(obj, new ObjectTransform(o));
+  return obj;
+}
+
+//---------------------------------------------------------------------------------------------------------------------
 // MQObject
 //---------------------------------------------------------------------------------------------------------------------
 JSValue NewMQObject(JSContext* ctx, MQObject o, int index);
 
-class MQObjectWrapper {
+class MQObjectWrapper : public JSClassBase<MQObjectWrapper> {
  public:
   int index;
   MQObject obj;
@@ -263,6 +349,7 @@ class MQObjectWrapper {
             JSValueConst* argv) {
     JS_SetPropertyStr(ctx, this_obj, "verts", NewVertexArray(ctx, obj));
     JS_SetPropertyStr(ctx, this_obj, "faces", NewFaceArray(ctx, obj));
+    JS_SetPropertyStr(ctx, this_obj, "local", NewObjectTransform(ctx, obj));
     if (argc > 0 && JS_IsString(argv[0])) {
       SetName(convert_jsvalue<std::string>(ctx, argv[0]));
     }
@@ -273,7 +360,6 @@ class MQObjectWrapper {
     index = -1;
   }
 
-  static JSClassID class_id;
   static const JSCFunctionListEntry proto_funcs[];
 
   int GetIndex() { return index; }
@@ -290,10 +376,28 @@ class MQObjectWrapper {
     std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
     return converter.to_bytes(obj->GetNameW());
   }
-  JSValue SetName(const std::string &name) {
+  JSValue SetName(const std::string& name) {
     std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
     obj->SetName(converter.from_bytes(name).c_str());
     return JS_UNDEFINED;
+  }
+  void AddRenderFlag(int flag) {
+    obj->AddRenderFlag((MQOBJECT_RENDER_FLAG)flag);
+  }
+  void RemoveRenderFlag(int flag) {
+    obj->RemoveRenderFlag((MQOBJECT_RENDER_FLAG)flag);
+  }
+  JSValue GetWireframe() { return JS_UNDEFINED; }
+  void SetWireframe(bool on) {
+    if (on) {
+      obj->AddRenderFlag(MQOBJECT_RENDER_LINE);
+      obj->AddRenderEraseFlag(MQOBJECT_RENDER_POINT);
+      obj->AddRenderEraseFlag(MQOBJECT_RENDER_FACE);
+    } else {
+      obj->RemoveRenderFlag(MQOBJECT_RENDER_LINE);
+      obj->RemoveRenderEraseFlag(MQOBJECT_RENDER_POINT);
+      obj->RemoveRenderEraseFlag(MQOBJECT_RENDER_FACE);
+    }
   }
   void Compact() { obj->Compact(); }
   void Clear() { obj->Clear(); }
@@ -316,8 +420,6 @@ class MQObjectWrapper {
   }
 };
 
-JSClassID MQObjectWrapper::class_id;
-
 const JSCFunctionListEntry MQObjectWrapper::proto_funcs[] = {
     function_entry_getset<&GetIndex>("index"),
     function_entry_getset<&GetId>("id"),
@@ -326,12 +428,15 @@ const JSCFunctionListEntry MQObjectWrapper::proto_funcs[] = {
     function_entry_getset<&Visible, &SetVisible>("visible"),
     function_entry_getset<&Selected, &SetSelected>("selected"),
     function_entry_getset<&Locked, &SetLocked>("locked"),
+    function_entry<&AddRenderFlag>("addRenderFlag"),
+    function_entry<&RemoveRenderFlag>("removeRenderFlag"),
     function_entry<&Compact>("compact"),
     function_entry<&Clear>("clear"),
     function_entry<&Freeze>("freeze"),
     function_entry<&Merge>("merge"),
     function_entry<&Clone>("clone"),
     function_entry<&Clone>("optimizeVertex"),
+    function_entry_getset<&GetWireframe, &SetWireframe>("wireframe"),
 };
 
 JSValue NewMQObject(JSContext* ctx, MQObject o, int index) {
@@ -519,18 +624,10 @@ class MQSceneWrapper {
   float GetFOV() { return scene->GetFOV(); }
   void SetFOV(float v) { scene->SetFOV(v); }
   JSValue GetCameraAngle(JSContext* ctx) {
-    MQAngle angle = scene->GetCameraAngle();
-    ValueHolder v(ctx);
-    v.Set("head", angle.head);
-    v.Set("pitch", angle.pitch);
-    v.Set("bank", angle.bank);
-    return v.GetValue();
+    return ToJSValue(ctx, scene->GetCameraAngle());
   }
   void SetCameraAngle(JSContext* ctx, JSValue v) {
-    ValueHolder angle(ctx, v, true);
-    scene->SetCameraAngle(MQAngle(angle["head"].To<float>(),
-                                  angle["pitch"].To<float>(),
-                                  angle["bank"].To<float>()));
+    scene->SetCameraAngle(ToMQAngle(ctx, v));
   }
 };
 
@@ -562,6 +659,7 @@ class MQDocumentWrapper {
  public:
   MQDocument doc;
   std::map<std::string, std::string>* pluginKeyValue;
+  JSValueConst self = JS_UNDEFINED;
   static JSClassID class_id;
   static const JSCFunctionListEntry proto_funcs[];
 
@@ -570,6 +668,7 @@ class MQDocumentWrapper {
       : doc(doc) {
     pluginKeyValue = keyValue;
   }
+  MQDocumentWrapper() {}
 
   void Compact() { doc->Compact(); }
   int GetCurrentObjectIndex() { return doc->GetCurrentObjectIndex(); }
@@ -589,25 +688,43 @@ class MQDocumentWrapper {
 
   JSValue GetScene(JSContext* ctx) { return NewMQScene(ctx, doc); }
 
+  ValueHolder GetObjcetCache(JSContext* ctx) {
+    ValueHolder t(ctx, self, true);
+    if (!t.IsUndefined()) {
+      t.Define("_objectCache", JS_NewObject(ctx));
+      return t["_objectCache"];
+    }
+    return t;  // UNDEFINED
+  }
+
   JSValue GetObjects(JSContext* ctx, JSValueConst this_val, int argc,
                      JSValueConst* argv) {
-    // TODO: cache
+    ValueHolder objectCache = GetObjcetCache(ctx);
     ValueHolder ret(ctx, JS_NewArray(ctx));
     for (int i = 0; i < doc->GetObjectCount(); i++) {
       auto o = doc->GetObject(i);
       if (o != nullptr) {
-        ret.SetFree(i, NewMQObject(ctx, o, i));
+        JSValue obj = objectCache[o->GetUniqueID()].GetValue();
+        if (MQObjectWrapper::Unwrap(obj) == nullptr) {
+          JS_FreeValue(ctx, obj);
+          obj = JS_UNDEFINED;
+        }
+        if (obj == JS_UNDEFINED) {
+          obj = NewMQObject(ctx, o, i);
+          objectCache.Set(o->GetUniqueID(), JS_DupValue(ctx, obj));
+        }
+        ret.Set(i, obj);
       }
     }
     JSValue data[]{this_val};
-    ret.SetFree("append",
-                JS_NewCFunctionData(
-                    ctx, method_wrapper_bind<&MQDocumentWrapper::AddObject>, 1,
-                    0, 1, data));
-    ret.SetFree("remove",
-                JS_NewCFunctionData(
-                    ctx, method_wrapper_bind<&MQDocumentWrapper::RemoveObject>,
-                    1, 0, 1, data));
+    ret.Define("append",
+               JS_NewCFunctionData(
+                   ctx, method_wrapper_bind<&MQDocumentWrapper::AddObject>, 1,
+                   0, 1, data));
+    ret.Define("remove",
+               JS_NewCFunctionData(
+                   ctx, method_wrapper_bind<&MQDocumentWrapper::RemoveObject>,
+                   1, 0, 1, data));
     return ret.GetValue();
   }
 
@@ -646,15 +763,14 @@ class MQDocumentWrapper {
       }
     }
     JSValue data[]{this_val};
-    ret.SetFree("append",
-                JS_NewCFunctionData(
-                    ctx, method_wrapper_bind<&MQDocumentWrapper::AddMaterial>,
-                    1, 0, 1, data));
-    ret.SetFree(
-        "remove",
-        JS_NewCFunctionData(
-            ctx, method_wrapper_bind<&MQDocumentWrapper::DeleteMaterial>, 1, 0,
-            1, data));
+    ret.Define("append",
+               JS_NewCFunctionData(
+                   ctx, method_wrapper_bind<&MQDocumentWrapper::AddMaterial>, 1,
+                   0, 1, data));
+    ret.Define("remove",
+               JS_NewCFunctionData(
+                   ctx, method_wrapper_bind<&MQDocumentWrapper::DeleteMaterial>,
+                   1, 0, 1, data));
     return ret.GetValue();
   }
 
@@ -698,6 +814,16 @@ class MQDocumentWrapper {
     }
   }
 
+  JSValue GetGlobalMatrix(JSContext* ctx, JSValue obj) {
+    MQObjectWrapper *o = MQObjectWrapper::Unwrap(obj);
+    if (!o) {
+      return JS_EXCEPTION;
+    }
+    MQMatrix mat;
+    doc->GetGlobalMatrix(o->obj, mat);
+    return ToJSValue(ctx, mat);
+  }
+
   JSValue Triangulate(JSContext* ctx, JSValue arg) {
     ValueHolder poly(ctx, arg, true);
 
@@ -737,6 +863,7 @@ const JSCFunctionListEntry MQDocumentWrapper::proto_funcs[] = {
     function_entry<&ClearSelect>("clearSelect"),
     function_entry<&Compact>("compact"),
     function_entry<&Triangulate>("triangulate"),
+    function_entry<&GetGlobalMatrix>("getGlobalMatrix"),
     function_entry<&GetPluginData>("getPluginData"),
     function_entry<&SetPluginData>("setPluginData"),
 };
@@ -752,29 +879,56 @@ static int DocumentModuleInit(JSContext* ctx, JSModuleDef* m) {
 JSValue NewMQDocument(JSContext* ctx, MQDocumentWrapper* doc) {
   JSValue obj = JS_NewObjectClass(ctx, MQDocumentWrapper::class_id);
   if (JS_IsException(obj)) return obj;
+  doc->self = obj;
   JS_SetOpaque(obj, doc);
   return obj;
 }
 
+JSValue SetDrawProxyObject(JSContext* ctx, JSValue obj, JSValue proxy,
+                           bool sync_select) {
+  MQBasePlugin* plugin = GetPluginClass();
+  if (!plugin) {
+    return JS_EXCEPTION;
+  }
+  MQObjectWrapper* mqobj = MQObjectWrapper::Unwrap(obj);
+  MQObjectWrapper* mqobjproxy = MQObjectWrapper::Unwrap(proxy);
+  if (!mqobj) {
+    return JS_EXCEPTION;
+  }
+
+  plugin->SetDrawProxyObject(mqobj->obj, mqobjproxy ? mqobjproxy->obj : nullptr,
+                             sync_select);
+  JS_SetPropertyStr(ctx, obj, "_drawProxyObject", JS_DupValue(ctx, proxy));
+  return JS_UNDEFINED;
+}
+
 void InstallMQDocument(JSContext* ctx, MQDocument doc,
-                       std::map<std::string, std::string>* keyValue) {
+                       std::map<std::string, std::string>* keyValue = nullptr) {
   JSValue arrayObj = JS_NewArray(ctx);
   NewClassProto<MQSceneWrapper>(ctx, "MQScene");
   NewClassProto<FaceWrapper>(ctx, "Face");
+  NewClassProto<ObjectTransform>(ctx, "ObjectTransform");
   JSValue vertexArrayProto =
-      NewClassProto<VertexArray>(ctx, "VertexArray", &VertexArray_exotic);
+      VertexArray::NewClassProto(ctx, "VertexArray", &VertexArray_exotic);
   JS_SetPrototype(ctx, vertexArrayProto, arrayObj);
   JSValue faceArrayProto =
       NewClassProto<FaceArray>(ctx, "FaceArray", &FaceArray_exotic);
   JS_SetPrototype(ctx, faceArrayProto, arrayObj);
   JS_FreeValue(ctx, arrayObj);
 
-  JSValue proto = NewClassProto<MQDocumentWrapper>(ctx, "MQDocument");
+  // NewClassProto<MQDocumentWrapper>(ctx, "MQDocument");
   ValueHolder global(ctx, JS_GetGlobalObject(ctx));
-  global.SetFree("document",
-                 NewMQDocument(ctx, new MQDocumentWrapper(doc, keyValue)));
   global.SetFree("MQObject",
                  newClassConstructor<MQObjectWrapper>(ctx, "MQObject"));
   global.SetFree("MQMaterial",
                  newClassConstructor<MQMaterialWrapper>(ctx, "MQMaterial"));
+  global.SetFree("MQDocument",
+                 newClassConstructor<MQDocumentWrapper>(ctx, "MQDocument"));
+  global.Set("document",
+             NewMQDocument(ctx, new MQDocumentWrapper(doc, keyValue)));
+
+  global["document"].Set(
+      "setDrawProxyObject",
+      JS_NewCFunction(ctx, method_wrapper<SetDrawProxyObject>,
+                      "setDrawProxyObject", 3));
 }
