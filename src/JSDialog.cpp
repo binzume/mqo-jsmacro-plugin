@@ -8,7 +8,9 @@
 #include "Utils.h"
 #include "qjsutils.h"
 
-//---------------------------------------------------------------------------------------------------------------------
+void dump_exception(JSContext* ctx, JSValue val);
+
+    //---------------------------------------------------------------------------------------------------------------------
 // Dialog
 //---------------------------------------------------------------------------------------------------------------------
 
@@ -112,72 +114,106 @@ class WidgetBuilder {
   WidgetBuilder(MQWindowBase* _w, std::vector<ItemBinder>& _itemholders)
       : window(_w), itemholders(_itemholders) {}
 
-  void build(ValueHolder& items, MQWidgetBase* parent) {
+  MQWidgetBase* build(ValueHolder& item, MQWidgetBase* parent) {
+    if (item.IsString()) {
+      std::wstring label = converter.from_bytes(item.To<std::string>());
+      auto* w = window->CreateLabel(parent, label);
+      return w;
+    } else if (item.IsArray()) {
+      auto* w = window->CreateVerticalFrame(parent);
+      buildChildren(item, w);
+      return w;
+    } else if (item.IsObject()) {
+      std::string type = item["type"].To<std::string>();
+      ValueHolder value = item["value"];
+      if (std::string(type) == "text") {
+        std::wstring v = converter.from_bytes(value.To<std::string>());
+        auto* w = window->CreateEdit(parent, v);
+        itemholders.emplace_back(item, ItemBinder::WidgetType::Edit, w);
+        return w;
+      } else if (std::string(type) == "number") {
+        std::wstring v = converter.from_bytes(value.To<std::string>());
+        auto* w = window->CreateEdit(parent, v);
+        w->SetNumeric(MQEdit::NUMERIC_DOUBLE);
+        itemholders.emplace_back(item, ItemBinder::WidgetType::Edit, w);
+        return w;
+      } else if (std::string(type) == "checkbox") {
+        std::wstring v = converter.from_bytes(item["label"].To<std::string>());
+        auto* w = window->CreateCheckBox(parent, v);
+        w->SetChecked(value.To<bool>());
+        itemholders.emplace_back(item, ItemBinder::WidgetType::CheckBox, w);
+        return w;
+      } else if (std::string(type) == "combobox") {
+        auto* w = window->CreateComboBox(parent);
+        for (uint32_t j = 0; j < item["items"].Length(); j++) {
+          std::wstring s =
+              converter.from_bytes(item["items"][j].To<std::string>());
+          w->AddItem(s);
+        }
+        w->SetCurrentIndex(value.To<int>());
+        itemholders.emplace_back(item, ItemBinder::WidgetType::ComboBox, w);
+        return w;
+      } else if (std::string(type) == "button") {
+        std::wstring v = converter.from_bytes(value.To<std::string>());
+        auto* w = window->CreateButton(parent, v);
+        itemholders.emplace_back(item, ItemBinder::WidgetType::Button, w);
+        return w;
+      } else if (std::string(type) == "hframe") {
+        auto* w = window->CreateHorizontalFrame(parent);
+        buildChildren(item["items"], w);
+        return w;
+      } else if (std::string(type) == "vframe") {
+        auto* w = window->CreateVerticalFrame(parent);
+        buildChildren(item["items"], w);
+        return w;
+      } else if (std::string(type) == "group") {
+        std::wstring v = converter.from_bytes(item["title"].To<std::string>());
+        auto* w = window->CreateGroupBox(parent, v);
+        buildChildren(item["items"], w);
+        return w;
+      }
+      return nullptr;
+    }
+    return nullptr;
+  }
+
+  void buildChildren(ValueHolder items, MQWidgetBase* parent) {
     for (uint32_t i = 0; i < items.Length(); i++) {
       ValueHolder item = items[i];
-      if (item.IsString()) {
-        std::wstring label = converter.from_bytes(item.To<std::string>());
-        auto* w = window->CreateLabel(parent, label);
-      } else if (item.IsObject()) {
-        std::string type = item["type"].To<std::string>();
-        ValueHolder value = item["value"];
-        if (std::string(type) == "text") {
-          std::wstring v = converter.from_bytes(value.To<std::string>());
-          auto* w = window->CreateEdit(parent, v);
-          itemholders.emplace_back(item, ItemBinder::WidgetType::Edit, w);
-        } else if (std::string(type) == "number") {
-          std::wstring v = converter.from_bytes(value.To<std::string>());
-          auto* w = window->CreateEdit(parent, v);
-          w->SetNumeric(MQEdit::NUMERIC_DOUBLE);
-          itemholders.emplace_back(item, ItemBinder::WidgetType::Edit, w);
-        } else if (std::string(type) == "checkbox") {
-          std::wstring v =
-              converter.from_bytes(item["label"].To<std::string>());
-          auto* w = window->CreateCheckBox(parent, v);
-          w->SetChecked(value.To<bool>());
-          itemholders.emplace_back(item, ItemBinder::WidgetType::CheckBox, w);
-        } else if (std::string(type) == "combobox") {
-          auto* w = window->CreateComboBox(parent);
-          for (uint32_t j = 0; j < item["items"].Length(); j++) {
-            std::wstring s =
-                converter.from_bytes(item["items"][j].To<std::string>());
-            w->AddItem(s);
-          }
-          w->SetCurrentIndex(value.To<int>());
-          itemholders.emplace_back(item, ItemBinder::WidgetType::ComboBox, w);
-        } else if (std::string(type) == "button") {
-          std::wstring v = converter.from_bytes(value.To<std::string>());
-          auto* w = window->CreateButton(parent, v);
-          itemholders.emplace_back(item, ItemBinder::WidgetType::Button, w);
-        } else if (std::string(type) == "hframe") {
-          auto* w = window->CreateHorizontalFrame(parent);
-          ValueHolder items = item["items"];
-          build(items, w);
-        } else if (std::string(type) == "vframe") {
-          auto* w = window->CreateVerticalFrame(parent);
-          ValueHolder items = item["items"];
-          build(items, w);
+      auto w = build(item, parent);
+      if (w != nullptr) {
+        if (item["hfill"].To<bool>()) {
+          w->SetHorzLayout(MQWidgetBase::LAYOUT_FILL);
+        }
+        if (item["vfill"].To<bool>()) {
+          w->SetVertLayout(MQWidgetBase::LAYOUT_FILL);
         }
       }
     }
   }
 };
 
-class JSFormWindow : public MQWindow {
+class JSFormWindow : public MQWindow, public JSClassBase<JSFormWindow> {
   std::vector<ItemBinder> binders;
+  MQWidgetBase* rootFrame;
 
  public:
-  static JSClassID class_id;
   static const JSCFunctionListEntry proto_funcs[];
 
-  JSFormWindow(MQWindowBase parent) : MQWindow(parent) {}
+  JSFormWindow(MQWindowBase parent) : MQWindow(parent), rootFrame(nullptr) {}
+  JSFormWindow(MQWindowBase parent, JSContext* ctx, JSValueConst formsSpec)
+      : MQWindow(parent), rootFrame(nullptr) {
+    SetContent(ctx, formsSpec);
+  }
 
-  void Build(ValueHolder& params) {
+  void SetContent(JSContext* ctx, JSValueConst formsSpec) {
+    Clear();
+    ValueHolder params(ctx, formsSpec, true);
     WidgetBuilder builder(this, binders);
+    SetTitle(builder.converter.from_bytes(params["title"].To<std::string>()));
+    params["modal"].To<bool>() ? SetModal() : ReleaseModal();
     ValueHolder items = params["items"];
-    std::string title = params["title"].To<std::string>();
-    SetTitle(builder.converter.from_bytes(title));
-    builder.build(items, this);
+    rootFrame = builder.build(items, this);
 
     for (auto& b : binders) {
       if (b.type == ItemBinder::WidgetType::Button) {
@@ -188,6 +224,11 @@ class JSFormWindow : public MQWindow {
     }
     SetVisible(true);
   }
+
+  int GetWidth() { return MQWindow::GetWidth(); }
+  void SetWidth(int width) { MQWindow::SetWidth(width); }
+  int GetHeight() { return MQWindow::GetHeight(); }
+  void SetHeight(int height) { MQWindow::SetHeight(height); }
 
   void SetValue(JSContext* ctx, std::string id, JSValueConst value) {
     auto b = std::find_if(binders.begin(), binders.end(),
@@ -203,6 +244,14 @@ class JSFormWindow : public MQWindow {
     return b != binders.end() ? b->get(ctx) : JS_UNDEFINED;
   }
 
+  void Clear() {
+    if (rootFrame) {
+      DeleteWidget(rootFrame);
+      rootFrame = nullptr;
+    }
+    binders.clear();
+  }
+
   void ReadValues(JSContext* ctx, JSValueConst value) {
     ValueHolder values(ctx, value);
     std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
@@ -210,7 +259,10 @@ class JSFormWindow : public MQWindow {
       binder.read(values, converter);
     }
   }
-  void Close() { SetVisible(false); }
+  void Close() {
+    SetVisible(false);
+    Clear();
+  }
 
   BOOL OnClick(MQWidgetBase* sender, MQDocument doc) {
     auto b = std::find_if(binders.begin(), binders.end(),
@@ -219,12 +271,16 @@ class JSFormWindow : public MQWindow {
       return FALSE;
     }
     if (b->item["onclick"].IsFunction()) {
+      JSContext* ctx = b->item.ctx;
       JSValue item = b->item.GetValue();
       auto fn = b->item["onclick"].GetValue();
-      JSValue r = JS_Call(b->item.ctx, fn, item, 1, &item);
-      JS_FreeValue(b->item.ctx, r);
-      JS_FreeValue(b->item.ctx, fn);
-      JS_FreeValue(b->item.ctx, item);
+      JSValue r = JS_Call(ctx, fn, item, 1, &item);
+      if (JS_IsException(r)) {
+        dump_exception(ctx, r);
+      }
+      JS_FreeValue(ctx, r);
+      JS_FreeValue(ctx, fn);
+      JS_FreeValue(ctx, item);
     }
     return TRUE;
   }
@@ -241,6 +297,9 @@ class JSFormWindow : public MQWindow {
       JSValue value = b->get(ctx);
       auto fn = b->item["onchange"].GetValue();
       JSValue r = JS_Call(ctx, fn, item, 1, &item);
+      if (JS_IsException(r)) {
+        dump_exception(ctx, r);
+      }
       JS_FreeValue(ctx, r);
       JS_FreeValue(ctx, fn);
       JS_FreeValue(ctx, item);
@@ -250,27 +309,26 @@ class JSFormWindow : public MQWindow {
   }
 };
 
-JSClassID JSFormWindow::class_id;
 
 const JSCFunctionListEntry JSFormWindow::proto_funcs[] = {
     function_entry<&Close>("close"),
     function_entry<&ReadValues>("readValues"),
     function_entry<&SetValue>("setValue"),
     function_entry<&GetValue>("getValue"),
+    function_entry<&SetContent>("setContent"),
+    function_entry_getset<&GetWidth, &SetWidth>("width"),
+    function_entry_getset<&GetHeight, &SetHeight>("height"),
 };
 
 static JSValue CreateForm(JSContext* ctx, JSValueConst this_val, int argc,
-                            JSValueConst* argv) {
+                          JSValueConst* argv) {
   if (argc < 1) {
     return JS_EXCEPTION;
   }
 
   JSValue obj = JS_NewObjectClass(ctx, JSFormWindow::class_id);
   if (JS_IsException(obj)) return obj;
-  auto w = new JSFormWindow(MQWindow::GetMainWindow());
-  JS_SetOpaque(obj, w);
-  ValueHolder c(ctx, argv[0], true);
-  w->Build(c);
+  JS_SetOpaque(obj, new JSFormWindow(MQWindow::GetMainWindow(), ctx, argv[0]));
   return obj;
 }
 
@@ -287,7 +345,7 @@ class Dialog : public MQDialog {
     ValueHolder items = params["items"];
     std::string title = params["title"].To<std::string>();
     SetTitle(builder.converter.from_bytes(title));
-    builder.build(items, this);
+    builder.buildChildren(items, this);
 
     int buttonCount = buttons.Length();
     if (buttonCount > 0) {
@@ -436,17 +494,16 @@ const JSCFunctionListEntry dialog_funcs[] = {
     function_entry("alertDialog", 2, AlertDialog),
 };
 
+
 static int DialogModuleInit(JSContext* ctx, JSModuleDef* m) {
   NewClassProto<JSFormWindow>(ctx, "FormWindow");
 
-  return JS_SetModuleExportList(ctx, m, dialog_funcs,
-                                (int)std::size(dialog_funcs));
+  return JS_SetModuleExportList(ctx, m, dialog_funcs, (int)std::size(dialog_funcs));
 }
 
 JSModuleDef* InitDialogModule(JSContext* ctx) {
-  JSModuleDef* m;
-  m = JS_NewCModule(ctx, "mqdialog",
-                    DialogModuleInit);  // TODO: rename to mqwidget
+  JSModuleDef* m = JS_NewCModule(ctx, "mqdialog",
+                                 DialogModuleInit);  // TODO: rename to mqwidget
   if (!m) {
     return NULL;
   }

@@ -160,8 +160,8 @@ struct arg_info<R (*)(JSContext*, JSValueConst, int, JSValueConst*, Args...)> {
 
 template <typename T, typename R, typename... Args>
 inline JSValue invoke_function(R (T::*method)(Args...), JSContext* ctx,
-                             JSValueConst this_val, int argc,
-                             JSValueConst* argv) {
+                               JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
   T* p = (T*)JS_GetOpaque2(ctx, this_val, T::class_id);
   if (!p) {
     return JS_EXCEPTION;
@@ -175,8 +175,8 @@ inline JSValue invoke_function(R (T::*method)(Args...), JSContext* ctx,
 
 template <typename R, typename... Args>
 inline JSValue invoke_function(R (*method)(Args...), JSContext* ctx,
-                             JSValueConst this_val, int argc,
-                             JSValueConst* argv) {
+                               JSValueConst this_val, int argc,
+                               JSValueConst* argv) {
   using arg = arg_info<decltype(method)>;
   std::tuple prefix(ctx, this_val, argc, argv);
   return invoke_function_impl(arg::prefix(), arg::extra(),
@@ -216,8 +216,7 @@ constexpr JSCFunctionListEntry function_entry(const char* name, uint8_t length,
 
 template <auto method>
 constexpr JSCFunctionListEntry function_entry(
-    const char* name,
-    uint8_t len = arg_info<decltype(method)>::extra::size()) {
+    const char* name, uint8_t len = arg_info<decltype(method)>::extra::size()) {
   return function_entry(name, len, method_wrapper<method>);
 }
 
@@ -334,7 +333,6 @@ void simple_finalizer(JSRuntime* rt, JSValue val) {
   }
 }
 
-
 class ValueHolder {
   JSValue value;
   friend JSValue unwrap(ValueHolder&& v);
@@ -390,6 +388,13 @@ class ValueHolder {
     JS_SetProperty(ctx, value, prop, to_value(v));
     JS_FreeAtom(ctx, prop);
   }
+  template <typename TN, typename TV>
+  void Define(TN name, TV v, int flags = JS_PROP_HAS_WRITABLE) {
+    JSAtom prop = to_atom(name);
+    JS_DefinePropertyValue(ctx, value, prop, to_value(v),
+                           flags | JS_PROP_THROW);
+    JS_FreeAtom(ctx, prop);
+  }
   template <typename TN>
   void Delete(TN name) {
     JSAtom prop = to_atom(name);
@@ -413,6 +418,22 @@ inline JSValue unwrap(ValueHolder&& v) {
   v.value = JS_UNDEFINED;
   return value;
 }
+
+template <typename T>
+class JSClassBase {
+ public:
+  static JSClassID class_id;
+  static T* Unwrap(JSValueConst v) { return (T*)JS_GetOpaque(v, class_id); }
+
+  static JSValue NewClassProto(JSContext* ctx, const char* className,
+                               JSClassExoticMethods* exotic = nullptr) {
+    return ::NewClassProto<T>(ctx, className, exotic);
+  }
+};
+
+template <typename T>
+JSClassID JSClassBase<T>::class_id = 0;
+
 
 template <typename T>
 inline JSValue NewClassProto(JSContext* ctx, const char* name,
