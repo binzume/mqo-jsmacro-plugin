@@ -341,6 +341,12 @@ class ValueHolder {
   JSContext* ctx;
   // TODO: Dup
   ValueHolder& operator=(const ValueHolder&) = delete;
+  ValueHolder& operator=(ValueHolder&& v) noexcept {
+    JS_FreeValue(ctx, value);
+    value = v.value;
+    v.value = JS_UNDEFINED;
+    return *this;
+  }
 
   ValueHolder(JSContext* ctx, JSValue _value, bool dup = false)
       : value(_value), ctx(ctx) {
@@ -400,6 +406,17 @@ class ValueHolder {
     JSAtom prop = to_atom(name);
     JS_DeleteProperty(ctx, value, prop, JS_PROP_THROW);
     JS_FreeAtom(ctx, prop);
+  }
+
+  void swap(ValueHolder& v) {
+    JSValue t = v.value;
+    value = v.value;
+    v.value = t;
+  }
+  void swap(ValueHolder&& v) {
+    JSValue t = v.value;
+    value = v.value;
+    v.value = t;
   }
 
  private:

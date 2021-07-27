@@ -147,6 +147,9 @@ class JSMacroPlugin : public MQStationPlugin {
     CloseSetting(setting);
   }
 
+  static JSModuleDef *LoadJSModule(JSContext *ctx, const char *name,
+                                   void *opaque);
+
  protected:
   JSRuntime *runtime;
   JsContext *jsContext;
@@ -169,9 +172,8 @@ class JSMacroPlugin : public MQStationPlugin {
       if (child->GetName() == "KeyValue") {
         MQXmlElement item = child->FirstChildElement();
         while (item != NULL) {
-          debug_log(item->GetAttribute("key"));
           pluginKeyValue[item->GetAttribute("key")] = item->GetText();
-          item = item->NextChildElement(child);
+          item = child->NextChildElement(item);
         }
       }
       child = elem->NextChildElement(child);
@@ -300,7 +302,10 @@ MQBasePlugin *GetPluginClass() {
 //---------------------------------------------------------------------------------------------------------------------
 //    コンストラクタ
 //---------------------------------------------------------------------------------------------------------------------
-JSMacroPlugin::JSMacroPlugin() : runtime(JS_NewRuntime()), jsContext(nullptr) {}
+
+JSMacroPlugin::JSMacroPlugin() : runtime(JS_NewRuntime()), jsContext(nullptr) {
+  JS_SetModuleLoaderFunc(runtime, NULL, LoadJSModule, this);
+}
 
 //---------------------------------------------------------------------------------------------------------------------
 //    プラグインIDを返す。
@@ -421,6 +426,39 @@ VOID CALLBACK JSMacroPlugin::TickTimerProc(HWND hwnd, UINT uMsg,
     plugin->jsContext->tickTimerId = 0;
     plugin->BeginCallback(nullptr);
   }
+}
+
+JSModuleDef *JSMacroPlugin::LoadJSModule(JSContext *ctx, const char *path,
+                                         void *opaque) {
+  JSMacroPlugin *plugin = (JSMacroPlugin *)opaque;
+
+  std::string url = std::string("file://") + path;
+  std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+  std::ifstream jsfile(converter.from_bytes(plugin->GetScriptDir() + path));
+  std::stringstream buffer;
+  buffer << jsfile.rdbuf();
+  jsfile.close();
+  if (jsfile.fail()) {
+    debug_log(std::string("Read error: ") + path, 2);
+    return nullptr;
+  }
+  std::string code = buffer.str();
+
+  JSValue result = JS_Eval(ctx, code.c_str(), code.size(), path,
+                     JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+  if (JS_IsException(result)) return NULL;
+
+  JSModuleDef *m = (JSModuleDef *)JS_VALUE_GET_PTR(result);
+
+  JSValue meta = JS_GetImportMeta(ctx, m);
+  if (!JS_IsException(meta)) {
+    JS_DefinePropertyValueStr(ctx, meta, "url", JS_NewString(ctx, url.c_str()),
+                              JS_PROP_C_W_E);
+    JS_FreeValue(ctx, meta);
+  }
+
+  JS_FreeValue(ctx, result);
+  return m;
 }
 
 //---------------------------------------------------------------------------------------------------------------------
