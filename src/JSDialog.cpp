@@ -10,7 +10,7 @@
 
 void dump_exception(JSContext* ctx, JSValue val);
 
-    //---------------------------------------------------------------------------------------------------------------------
+//---------------------------------------------------------------------------------------------------------------------
 // Dialog
 //---------------------------------------------------------------------------------------------------------------------
 
@@ -467,11 +467,8 @@ static JSValue FolderDialog(JSContext* ctx, JSValueConst this_val, int argc,
 
 static JSValue AlertDialog(JSContext* ctx, JSValueConst this_val, int argc,
                            JSValueConst* argv) {
-  if (argc < 1) {
-    JS_ThrowTypeError(ctx, "invalid arguments");
-    return JS_EXCEPTION;
-  }
   ValueHolder message(ctx, argv[0], true);
+  ValueHolder title(ctx, argv[1], true);
 
   if (!message.IsString()) {
     JS_ThrowTypeError(ctx, "invalid arguments");
@@ -480,7 +477,7 @@ static JSValue AlertDialog(JSContext* ctx, JSValueConst this_val, int argc,
 
   std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
   std::wstring wmessage = converter.from_bytes(message.To<std::string>());
-  std::wstring wtitle = L"";
+  std::wstring wtitle = converter.from_bytes(title.To<std::string>());
   MQWindow window = MQWindow::GetMainWindow();
   MQDialog::MessageInformationBox(window, wmessage, wtitle);
   return JS_UNDEFINED;
