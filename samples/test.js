@@ -1,3 +1,4 @@
+// @ts-check
 "use strict";
 // test
 
@@ -27,7 +28,7 @@ function test(name, b) {
 }
 
 test("Core", () => {
-	assertEquals("object", typeof document);
+	assertEquals("object", typeof mqdocument);
 	assertEquals("object", typeof process);
 	assertEquals("string", typeof process.version);
 	assertEquals("function", typeof MQMaterial);
@@ -37,37 +38,37 @@ test("Core", () => {
 });
 
 test("MQDocument", () => {
-	document.compact();
-	document.clearSelect();
-	assertNotNull(document.objects);
-	assertNotNull(document.materials);
-	assertNotNull(document.scene);
-	assertNotNull(document.scene);
+	mqdocument.compact();
+	mqdocument.clearSelect();
+	assertNotNull(mqdocument.objects);
+	assertNotNull(mqdocument.materials);
+	assertNotNull(mqdocument.scene);
+	assertNotNull(mqdocument.scene);
 
 	{
 		// triangulate
-		assertEquals(0, document.triangulate([]).length);
-		assertEquals(3, document.triangulate([{x:0,y:0,z:0}, {x:0,y:1,z:0}, {x:0,y:0,z:1}]).length);
-		assertEquals(6, document.triangulate([{x:0,y:0,z:0}, {x:0,y:1,z:0}, {x:0,y:0,z:1}, {x:1,y:1,z:1}]).length);
-		assertEquals(0, document.triangulate([{x:0,y:0,z:0}]).length);
+		assertEquals(0, mqdocument.triangulate([]).length);
+		assertEquals(3, mqdocument.triangulate([{x:0,y:0,z:0}, {x:0,y:1,z:0}, {x:0,y:0,z:1}]).length);
+		assertEquals(6, mqdocument.triangulate([{x:0,y:0,z:0}, {x:0,y:1,z:0}, {x:0,y:0,z:1}, {x:1,y:1,z:1}]).length);
+		assertEquals(0, mqdocument.triangulate([{x:0,y:0,z:0}]).length);
 	}
 	{
 		// select
 		let obj = new MQObject("test");
-		let idx = document.objects.append(obj);
+		let idx = mqdocument.objects.append(obj);
 		obj.verts.append(0,0,0);
 		obj.verts.append(0,1,0);
 		obj.verts.append(0,0,1);
 		obj.faces.append([0,1,2], 0);
 
-		assertEquals(false, document.isVertexSelected(idx, 0));
-		document.setVertexSelected(idx, 0, true);
-		assertEquals(true, document.isVertexSelected(idx, 0));
-		assertEquals(false, document.isFaceSelected(idx, 0));
-		document.setFaceSelected(idx, 0, true);
-		assertEquals(true, document.isFaceSelected(idx, 0));
+		assertEquals(false, mqdocument.isVertexSelected(idx, 0));
+		mqdocument.setVertexSelected(idx, 0, true);
+		assertEquals(true, mqdocument.isVertexSelected(idx, 0));
+		assertEquals(false, mqdocument.isFaceSelected(idx, 0));
+		mqdocument.setFaceSelected(idx, 0, true);
+		assertEquals(true, mqdocument.isFaceSelected(idx, 0));
 
-		document.objects.remove(obj);
+		mqdocument.objects.remove(obj);
 	}
 });
 
@@ -84,29 +85,36 @@ test("MQObject", () => {
 		assertEquals(true, obj.selected);
 		obj.visible = false;
 		assertEquals(false, obj.visible);
-		document.objects.remove(obj);
-		let idx = document.objects.append(obj);
+		mqdocument.objects.remove(obj);
+		let idx = mqdocument.objects.append(obj);
 		assert(obj.id != 0, "id is set.");
 		assertEquals(idx, obj.index);
-		assertEquals(idx, document.objects.append(obj), "appendx2 (?)");
-		document.objects.remove(obj);
+		assertEquals(idx, mqdocument.objects.append(obj), "appendx2 (?)");
+		mqdocument.objects.remove(obj);
 		assertEquals(0, obj.id, "id is not set.");
-		assertEquals(undefined, document.objects[idx], "remove");
+		assertEquals(undefined, mqdocument.objects[idx], "remove");
 	}
 	{
-		let idx = document.objects.append( new MQObject("test") );
-		assertEquals("test", document.objects[idx].name, "append");
+		let idx = mqdocument.objects.append( new MQObject("test") );
+		assertEquals("test", mqdocument.objects[idx].name, "append");
 
-		document.objects.remove(idx);
-		assertEquals(undefined, document.objects[idx], "remove");
+		mqdocument.objects.remove(idx);
+		assertEquals(undefined, mqdocument.objects[idx], "remove");
 	}
 	{
-		assertThrows(TypeError, ()=>{ document.objects.remove(new MQMaterial()) });
-		assertThrows(TypeError, ()=>{ document.objects.remove({}) });
-		assertThrows(TypeError, ()=>{ document.objects.remove("hoge") });
-		assertThrows(TypeError, ()=>{ document.objects.append("hoge") });
-		assertThrows(TypeError, ()=>{ document.objects.append({}) });
-		assertThrows(TypeError, ()=>{ document.objects.append(123) });
+		// Error
+		// @ts-ignore
+		assertThrows(TypeError, ()=>{ mqdocument.objects.remove(new MQMaterial()) });
+		// @ts-ignore
+		assertThrows(TypeError, ()=>{ mqdocument.objects.remove({}) });
+		// @ts-ignore
+		assertThrows(TypeError, ()=>{ mqdocument.objects.remove("hoge") });
+		// @ts-ignore
+		assertThrows(TypeError, ()=>{ mqdocument.objects.append("hoge") });
+		// @ts-ignore
+		assertThrows(TypeError, ()=>{ mqdocument.objects.append({}) });
+		// @ts-ignore
+		assertThrows(TypeError, ()=>{ mqdocument.objects.append(123) });
 	}
 });
 
@@ -116,6 +124,7 @@ test("MQObject verts/faces", () => {
 		assertEquals(0, obj.faces.length, "empty");
 		obj.verts.append(123,0,0);
 		obj.verts.append({x: 456, y: 1, z: 2});
+		// @ts-ignore
 		obj.verts.append({x: "789", y: 2, z: 1});
 		assertEquals(3, obj.verts.length);
 		assertEquals(123.0, obj.verts[0].x);
@@ -162,43 +171,51 @@ test("MQMaterial", () => {
 		assertEquals(1.0, obj.color.r);
 		assertEquals(0.25, obj.color.a);
 
-		document.materials.remove(obj);
-		let idx = document.materials.append(obj);
+		mqdocument.materials.remove(obj);
+		let idx = mqdocument.materials.append(obj);
 		assert(obj.id != 0, "id is set.");
 		assertEquals(idx, obj.index);
-		document.materials.remove(obj);
+		mqdocument.materials.remove(obj);
 		assertEquals(0, obj.id, "id is not set.");
-		assertEquals(undefined, document.materials[idx], "removed");
+		assertEquals(undefined, mqdocument.materials[idx], "removed");
 	}
 	{
-		let idx = document.materials.append( new MQMaterial("test") );
-		assertEquals("test", document.materials[idx].name, "append");
+		let idx = mqdocument.materials.append( new MQMaterial("test") );
+		assertEquals("test", mqdocument.materials[idx].name, "append");
 
-		document.materials.remove(idx);
-		assertEquals(undefined, document.materials[idx], "remove");
+		mqdocument.materials.remove(idx);
+		assertEquals(undefined, mqdocument.materials[idx], "remove");
 	}
 	{
-		assertThrows(TypeError, ()=>{ document.materials.remove(new MQObject())});
-		assertThrows(TypeError, ()=>{ document.materials.remove({})});
-		assertThrows(TypeError, ()=>{ document.materials.remove("hoge") });
-		assertThrows(TypeError, ()=>{ document.materials.append(new MQObject())});
-		assertThrows(TypeError, ()=>{ document.materials.append({}) });
-		assertThrows(TypeError, ()=>{ document.materials.append("hoge") });
-		assertThrows(TypeError, ()=>{ document.materials.append(123) });
+		// Error
+		// @ts-ignore
+		assertThrows(TypeError, ()=>{ mqdocument.materials.remove(new MQObject())});
+		// @ts-ignore
+		assertThrows(TypeError, ()=>{ mqdocument.materials.remove({})});
+		// @ts-ignore
+		assertThrows(TypeError, ()=>{ mqdocument.materials.remove("hoge") });
+		// @ts-ignore
+		assertThrows(TypeError, ()=>{ mqdocument.materials.append(new MQObject())});
+		// @ts-ignore
+		assertThrows(TypeError, ()=>{ mqdocument.materials.append({}) });
+		// @ts-ignore
+		assertThrows(TypeError, ()=>{ mqdocument.materials.append("hoge") });
+		// @ts-ignore
+		assertThrows(TypeError, ()=>{ mqdocument.materials.append(123) });
 	}
 });
 
 test("MQScene", () => {
-	assertEquals("number", typeof document.scene.cameraPosition.x);
-	assertEquals("number", typeof document.scene.cameraPosition.y);
-	assertEquals("number", typeof document.scene.cameraPosition.z);
-	assertNotNull(document.scene.cameraLookAt.x);
-	assertNotNull(document.scene.cameraLookAt.y);
-	assertNotNull(document.scene.cameraLookAt.z);
-	assertNotNull(document.scene.cameraAngle.head);
-	assertNotNull(document.scene.rotationCenter.x);
-	assertNotNull(document.scene.zoom);
-	assertNotNull(document.scene.fov);
+	assertEquals("number", typeof mqdocument.scene.cameraPosition.x);
+	assertEquals("number", typeof mqdocument.scene.cameraPosition.y);
+	assertEquals("number", typeof mqdocument.scene.cameraPosition.z);
+	assertNotNull(mqdocument.scene.cameraLookAt.x);
+	assertNotNull(mqdocument.scene.cameraLookAt.y);
+	assertNotNull(mqdocument.scene.cameraLookAt.z);
+	assertNotNull(mqdocument.scene.cameraAngle.head);
+	assertNotNull(mqdocument.scene.rotationCenter.x);
+	assertNotNull(mqdocument.scene.zoom);
+	assertNotNull(mqdocument.scene.fov);
 });
 
 console.log("ok. "+ success + "/" + tests + " tests.");
