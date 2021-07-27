@@ -14,7 +14,7 @@
 // Vertics
 //---------------------------------------------------------------------------------------------------------------------
 
-JSValue NewVec3(JSContext* ctx, const MQPoint &p) {
+JSValue NewVec3(JSContext* ctx, const MQPoint& p) {
   ValueHolder v(ctx);
   v.Set("x", p.x);
   v.Set("y", p.y);
@@ -204,6 +204,10 @@ class FaceArray {
   int AddFace(JSContext* ctx, JSValueConst points, int mat) {
     ValueHolder v(ctx, points, true);
     uint32_t count = v.Length();
+    if (count == 0) {
+      mat = v["material"].To<int>();
+      v = v["points"];
+    }
     int* indices = new int[count];
     for (uint32_t i = 0; i < count; i++) {
       indices[i] = v[i].To<int32_t>();
@@ -372,6 +376,8 @@ class MQObjectWrapper : public JSClassBase<MQObjectWrapper> {
   void SetVisible(bool v) { obj->SetVisible(v); }
   bool Locked() { return obj->GetLocking(); }
   void SetLocked(bool v) { obj->SetLocking(v); }
+  int GetDepth() { return obj->GetDepth(); }
+  void SetDepth(int v) { obj->SetDepth(v); }
   std::string GetName() {
     std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
     return converter.to_bytes(obj->GetNameW());
@@ -425,6 +431,7 @@ const JSCFunctionListEntry MQObjectWrapper::proto_funcs[] = {
     function_entry_getset<&GetId>("id"),
     function_entry_getset<&GetName, &SetName>("name"),
     function_entry_getset<&GetType, &SetType>("type"),
+    function_entry_getset<&GetDepth, &SetDepth>("depth"),
     function_entry_getset<&Visible, &SetVisible>("visible"),
     function_entry_getset<&Selected, &SetSelected>("selected"),
     function_entry_getset<&Locked, &SetLocked>("locked"),
@@ -492,6 +499,19 @@ class MQMaterialWrapper {
     mat->SetName(converter.from_bytes(name).c_str());
     return JS_UNDEFINED;
   }
+
+  std::string GetTextureName(JSContext* ctx) {
+    std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+    wchar_t path[MAX_PATH] = {L'\0'};
+    mat->GetTextureNameW(path, MAX_PATH);
+    return converter.to_bytes(path);
+  }
+  JSValue SetTextureName(std::string name) {
+    std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
+    mat->SetTextureName(converter.from_bytes(name).c_str());
+    return JS_UNDEFINED;
+  }
+
   JSValue GetColor(JSContext* ctx) {
     ValueHolder v = FromMQColor(ctx, mat->GetColor());
     v.Set("a", mat->GetAlpha());
@@ -540,6 +560,9 @@ class MQMaterialWrapper {
   bool GetDoubleSided() { return mat->GetDoubleSided(); }
   void SetDoubleSided(bool v) { mat->SetDoubleSided(v); }
 
+  int GetShader() { return mat->GetShader(); }
+  void SetShader(int v) { mat->SetShader(v); }
+
  private:
   MQColor ToMQColor(ValueHolder col) {
     MQColor c;
@@ -563,6 +586,7 @@ const JSCFunctionListEntry MQMaterialWrapper::proto_funcs[] = {
     function_entry_getset<&GetIndex>("index"),
     function_entry_getset<&GetId>("id"),
     function_entry_getset<&GetName, &SetName>("name"),
+    function_entry_getset<&GetTextureName, &SetTextureName>("texture"),
     function_entry_getset<&GetColor, &SetColor>("color"),
     function_entry_getset<&GetAmbientColor, &SetAmbientColor>("ambientColor"),
     function_entry_getset<&GetEmissionColor, &SetEmissionColor>(
@@ -577,6 +601,7 @@ const JSCFunctionListEntry MQMaterialWrapper::proto_funcs[] = {
     function_entry_getset<&GetRefraction, &SetRefraction>("refraction"),
     function_entry_getset<&GetDoubleSided, &SetDoubleSided>("doubleSided"),
     function_entry_getset<&GetSelected, &SetSelected>("selected"),
+    function_entry_getset<&GetShader, &SetShader>("shaderType"),
 };
 
 JSValue NewMQMaterial(JSContext* ctx, MQMaterial mat, int index) {
@@ -673,6 +698,8 @@ class MQDocumentWrapper {
   void Compact() { doc->Compact(); }
   int GetCurrentObjectIndex() { return doc->GetCurrentObjectIndex(); }
   void SetCurrentObjectIndex(int i) { doc->SetCurrentObjectIndex(i); }
+  int GetCurrentMaterialIndex() { return doc->GetCurrentMaterialIndex(); }
+  void SetCurrentMaterialIndex(int i) { doc->SetCurrentMaterialIndex(i); }
   void ClearSelect(int flags) {
     doc->ClearSelect(flags ? flags : MQDOC_CLEARSELECT_ALL);
   }
@@ -815,7 +842,7 @@ class MQDocumentWrapper {
   }
 
   JSValue GetGlobalMatrix(JSContext* ctx, JSValue obj) {
-    MQObjectWrapper *o = MQObjectWrapper::Unwrap(obj);
+    MQObjectWrapper* o = MQObjectWrapper::Unwrap(obj);
     if (!o) {
       return JS_EXCEPTION;
     }
@@ -856,6 +883,8 @@ const JSCFunctionListEntry MQDocumentWrapper::proto_funcs[] = {
     function_entry_getset<&GetScene>("scene"),
     function_entry_getset<&GetCurrentObjectIndex, &SetCurrentObjectIndex>(
         "currentObjectIndex"),
+    function_entry_getset<&GetCurrentMaterialIndex, &SetCurrentMaterialIndex>(
+        "currentMaterialIndex"),
     function_entry<&IsVertexSelected>("isVertexSelected"),
     function_entry<&SetVertexSelected>("setVertexSelected"),
     function_entry<&IsFaceSelected>("isFaceSelected"),
@@ -876,14 +905,6 @@ static int DocumentModuleInit(JSContext* ctx, JSModuleDef* m) {
   return 0;
 }
 
-JSValue NewMQDocument(JSContext* ctx, MQDocumentWrapper* doc) {
-  JSValue obj = JS_NewObjectClass(ctx, MQDocumentWrapper::class_id);
-  if (JS_IsException(obj)) return obj;
-  doc->self = obj;
-  JS_SetOpaque(obj, doc);
-  return obj;
-}
-
 JSValue SetDrawProxyObject(JSContext* ctx, JSValue obj, JSValue proxy,
                            bool sync_select) {
   MQBasePlugin* plugin = GetPluginClass();
@@ -900,6 +921,18 @@ JSValue SetDrawProxyObject(JSContext* ctx, JSValue obj, JSValue proxy,
                              sync_select);
   JS_SetPropertyStr(ctx, obj, "_drawProxyObject", JS_DupValue(ctx, proxy));
   return JS_UNDEFINED;
+}
+
+JSValue NewMQDocument(JSContext* ctx, MQDocumentWrapper* doc) {
+  JSValue obj = JS_NewObjectClass(ctx, MQDocumentWrapper::class_id);
+  if (JS_IsException(obj)) return obj;
+  doc->self = obj;
+  JS_SetOpaque(obj, doc);
+
+  JS_SetPropertyStr(ctx, obj, "setDrawProxyObject",
+                    JS_NewCFunction(ctx, method_wrapper<SetDrawProxyObject>,
+                                    "setDrawProxyObject", 3));
+  return obj;
 }
 
 void InstallMQDocument(JSContext* ctx, MQDocument doc,
@@ -924,11 +957,6 @@ void InstallMQDocument(JSContext* ctx, MQDocument doc,
                  newClassConstructor<MQMaterialWrapper>(ctx, "MQMaterial"));
   global.SetFree("MQDocument",
                  newClassConstructor<MQDocumentWrapper>(ctx, "MQDocument"));
-  global.Set("document",
+  global.Set("mqdocument",
              NewMQDocument(ctx, new MQDocumentWrapper(doc, keyValue)));
-
-  global["document"].Set(
-      "setDrawProxyObject",
-      JS_NewCFunction(ctx, method_wrapper<SetDrawProxyObject>,
-                      "setDrawProxyObject", 3));
 }
