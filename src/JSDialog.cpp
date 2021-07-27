@@ -309,7 +309,6 @@ class JSFormWindow : public MQWindow, public JSClassBase<JSFormWindow> {
   }
 };
 
-
 const JSCFunctionListEntry JSFormWindow::proto_funcs[] = {
     function_entry<&Close>("close"),
     function_entry<&ReadValues>("readValues"),
@@ -491,16 +490,15 @@ const JSCFunctionListEntry dialog_funcs[] = {
     function_entry("alertDialog", 2, AlertDialog),
 };
 
-
 static int DialogModuleInit(JSContext* ctx, JSModuleDef* m) {
   NewClassProto<JSFormWindow>(ctx, "FormWindow");
 
-  return JS_SetModuleExportList(ctx, m, dialog_funcs, (int)std::size(dialog_funcs));
+  return JS_SetModuleExportList(ctx, m, dialog_funcs,
+                                (int)std::size(dialog_funcs));
 }
 
 JSModuleDef* InitDialogModule(JSContext* ctx) {
-  JSModuleDef* m = JS_NewCModule(ctx, "mqdialog",
-                                 DialogModuleInit);  // TODO: rename to mqwidget
+  JSModuleDef* m = JS_NewCModule(ctx, "mqwidget", DialogModuleInit);
   if (!m) {
     return NULL;
   }

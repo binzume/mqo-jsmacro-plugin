@@ -407,7 +407,13 @@ class ValueHolder {
     JS_DeleteProperty(ctx, value, prop, JS_PROP_THROW);
     JS_FreeAtom(ctx, prop);
   }
-
+  template <typename TN>
+  bool Has(TN name) {
+    JSAtom prop = to_atom(name);
+    bool ret = JS_HasProperty(ctx, value, prop) == 1;
+    JS_FreeAtom(ctx, prop);
+    return ret;
+  }
   void swap(ValueHolder& v) {
     JSValue t = v.value;
     value = v.value;
@@ -450,7 +456,6 @@ class JSClassBase {
 
 template <typename T>
 JSClassID JSClassBase<T>::class_id = 0;
-
 
 template <typename T>
 inline JSValue NewClassProto(JSContext* ctx, const char* name,

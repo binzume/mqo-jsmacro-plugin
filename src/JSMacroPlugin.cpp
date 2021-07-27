@@ -579,7 +579,7 @@ bool SaveDocument(const std::string &filename, int productId, int pluginId,
 static int DefineModuleInit(JSContext *ctx, JSModuleDef *m) {
   ValueHolder meta(ctx, JS_GetImportMeta(ctx, m));
   ValueHolder exportList = meta["exports"];
-  for (int i = 0; i < exportList.Length(); i++) {
+  for (uint32_t i = 0; i < exportList.Length(); i++) {
     JS_SetModuleExport(ctx, m, exportList[i]["name"].To<std::string>().c_str(),
                        exportList[i]["value"].GetValue());
   }
@@ -597,7 +597,7 @@ void DefineModule(JSContext *ctx, const std::string &name,
   ValueHolder meta(ctx, JS_GetImportMeta(ctx, m));
   meta.Define("exports", JS_DupValue(ctx, exports));
 
-  for (int i = 0; i < exportList.Length(); i++) {
+  for (uint32_t i = 0; i < exportList.Length(); i++) {
     JS_AddModuleExport(ctx, m, exportList[i]["name"].To<std::string>().c_str());
   }
 }

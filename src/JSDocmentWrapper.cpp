@@ -353,7 +353,7 @@ class MQObjectWrapper : public JSClassBase<MQObjectWrapper> {
             JSValueConst* argv) {
     JS_SetPropertyStr(ctx, this_obj, "verts", NewVertexArray(ctx, obj));
     JS_SetPropertyStr(ctx, this_obj, "faces", NewFaceArray(ctx, obj));
-    JS_SetPropertyStr(ctx, this_obj, "local", NewObjectTransform(ctx, obj));
+    JS_SetPropertyStr(ctx, this_obj, "transform", NewObjectTransform(ctx, obj));
     if (argc > 0 && JS_IsString(argv[0])) {
       SetName(convert_jsvalue<std::string>(ctx, argv[0]));
     }
@@ -715,27 +715,22 @@ class MQDocumentWrapper {
 
   JSValue GetScene(JSContext* ctx) { return NewMQScene(ctx, doc); }
 
-  ValueHolder GetObjcetCache(JSContext* ctx) {
-    ValueHolder t(ctx, self, true);
-    if (!t.IsUndefined()) {
+  ValueHolder GetObjcetCache(JSContext* ctx, JSValueConst this_val) {
+    ValueHolder t(ctx, this_val, true);
+    if (!t.Has("_objectCache")) {
       t.Define("_objectCache", JS_NewObject(ctx));
-      return t["_objectCache"];
     }
-    return t;  // UNDEFINED
+    return t["_objectCache"];
   }
 
   JSValue GetObjects(JSContext* ctx, JSValueConst this_val, int argc,
                      JSValueConst* argv) {
-    ValueHolder objectCache = GetObjcetCache(ctx);
+    ValueHolder objectCache = GetObjcetCache(ctx, this_val);
     ValueHolder ret(ctx, JS_NewArray(ctx));
     for (int i = 0; i < doc->GetObjectCount(); i++) {
       auto o = doc->GetObject(i);
       if (o != nullptr) {
         JSValue obj = objectCache[o->GetUniqueID()].GetValue();
-        if (MQObjectWrapper::Unwrap(obj) == nullptr) {
-          JS_FreeValue(ctx, obj);
-          obj = JS_UNDEFINED;
-        }
         if (obj == JS_UNDEFINED) {
           obj = NewMQObject(ctx, o, i);
           objectCache.Set(o->GetUniqueID(), JS_DupValue(ctx, obj));
@@ -949,7 +944,6 @@ void InstallMQDocument(JSContext* ctx, MQDocument doc,
   JS_SetPrototype(ctx, faceArrayProto, arrayObj);
   JS_FreeValue(ctx, arrayObj);
 
-  // NewClassProto<MQDocumentWrapper>(ctx, "MQDocument");
   ValueHolder global(ctx, JS_GetGlobalObject(ctx));
   global.SetFree("MQObject",
                  newClassConstructor<MQObjectWrapper>(ctx, "MQObject"));
