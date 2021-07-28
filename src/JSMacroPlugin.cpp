@@ -10,7 +10,6 @@
 #include <fstream>
 #include <functional>
 #include <map>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -446,7 +445,7 @@ JSModuleDef *JSMacroPlugin::LoadJSModule(JSContext *ctx, const char *path,
   std::string code = buffer.str();
 
   JSValue result = JS_Eval(ctx, code.c_str(), code.size(), path,
-                     JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+                           JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
   if (JS_IsException(result)) return NULL;
 
   JSModuleDef *m = (JSModuleDef *)JS_VALUE_GET_PTR(result);
@@ -466,20 +465,17 @@ JSModuleDef *JSMacroPlugin::LoadJSModule(JSContext *ctx, const char *path,
 //  js stdout (debug)
 //---------------------------------------------------------------------------------------------------------------------
 
-static JSValue WriteFile(JSContext *ctx, JSValueConst this_val, int argc,
+static JSValue WriteLog(JSContext *ctx, JSValueConst this_val, int argc,
                          JSValueConst *argv) {
-  std::stringstream ss;
-  bool first = true;
-  for (int i = 0; i < argc; i++) {
-    if (first) {
-      first = false;
-    } else {
-      ss << " ";
-    }
-    ss << convert_jsvalue<std::string>(ctx, argv[i]);
-  }
   JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
-  plugin->AddMessage(ss.str(), 0);
+  plugin->AddMessage(convert_jsvalue<std::string>(ctx, argv[0]), 0);
+  return JS_UNDEFINED;
+}
+
+static JSValue WriteError(JSContext *ctx, JSValueConst this_val, int argc,
+                        JSValueConst *argv) {
+  JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
+  plugin->AddMessage(convert_jsvalue<std::string>(ctx, argv[0]), 2);
   return JS_UNDEFINED;
 }
 
@@ -607,8 +603,10 @@ static ValueHolder NewProcessObject(JSContext *ctx,
                                     const std::vector<std::string> &args) {
   auto obj = ValueHolder(ctx);
 
-  auto fileObj = ValueHolder(ctx);
-  fileObj.Set("write", JS_NewCFunction(ctx, WriteFile, "write", 1));
+  auto stdlog = ValueHolder(ctx);
+  stdlog.Set("write", JS_NewCFunction(ctx, WriteLog, "write", 1));
+  auto errlog = ValueHolder(ctx);
+  errlog.Set("write", JS_NewCFunction(ctx, WriteError, "write", 1));
 
   static const JSCFunctionListEntry funcs[] = {
     function_entry<JsContext::RegisterTimer>("registerTimer", 3),
@@ -628,8 +626,8 @@ static ValueHolder NewProcessObject(JSContext *ctx,
                              (int)std::size(funcs));
 
   obj.Set("version", PLUGIN_VERSION);
-  obj.Set("stdout", fileObj.GetValue());
-  obj.Set("stderr", fileObj.GetValue());
+  obj.Set("stdout", stdlog.GetValue());
+  obj.Set("stderr", errlog.GetValue());
   return obj;
 }
 

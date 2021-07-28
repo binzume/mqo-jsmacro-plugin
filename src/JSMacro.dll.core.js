@@ -223,8 +223,8 @@ globalThis.alert = dialog.alertDialog; // alert(message);
 globalThis.confirm = dialog.confirmDialog; // confirm(message) -> boolean
 globalThis.prompt = dialog.promptDialog; // confirm(message, default) -> value
 globalThis.console = {
-	log(v) { process.stdout.write(v); },
-	error(v) { process.stderr.write(v); },
+	log(...v) { process.stdout.write(v.join(" ")); },
+	error(...v) { process.stderr.write(v.join(" ")); },
 };
 
 let timerId = 0;
@@ -269,10 +269,15 @@ process.onmessage = function (msg) {
 	}
 };
 
+MQDocument.prototype.getObjectByName = function (name) {
+	return this.objects.find(o => o && o.name == name);
+};
+
 MQDocument.prototype.addEventListener = function (name, f) {
 	listeners[name] = listeners[name] || [];
 	listeners[name].push([this, f]);
 };
+
 MQObject.prototype.applyTransform = function (tr) {
 	const length = this.verts.length;
 	if (typeof tr === "function") {
@@ -284,6 +289,23 @@ MQObject.prototype.applyTransform = function (tr) {
 			this.verts[i] = tr.applyTo(this.verts[i]);
 		}
 	}
+};
+
+MQObject.prototype.getChildren = function (recursive = false) {
+	if (this.index < 0) return [];
+	let objects = mqdocument.objects;
+	let children = [];
+	let d = this.depth + 1;
+	for (let i = this.index + 1; i < objects.length; i++) {
+		if (!objects[i]) {
+			continue;
+		} else if (objects[i].depth < d) {
+			break;
+		} else if (recursive || objects[i].depth == d) {
+			children.push(objects[i]);
+		}
+	}
+	return children;
 };
 
 Object.defineProperty(MQObject.prototype, 'globalMatrix', {
