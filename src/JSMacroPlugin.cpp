@@ -65,13 +65,13 @@ class JSMacroPlugin : public MQStationPlugin {
                       SAVE_DOCUMENT_PARAM &param) override {
     currentDocument = doc;
     EmitEvent("OnSaveDocument");
-    WriteElements(param.elem);
+    param.bSaveUniqueID = WriteElements(param.elem);
   }
   void OnSavePastDocument(MQDocument doc, const char *filename,
                           SAVE_DOCUMENT_PARAM &param) override {
     currentDocument = doc;
     EmitEvent("OnSavePastDocument");
-    WriteElements(param.elem);
+    param.bSaveUniqueID = WriteElements(param.elem);
   }
   void OnEndDocument(MQDocument doc) override {
     DisposeJsContext();
@@ -179,9 +179,9 @@ class JSMacroPlugin : public MQStationPlugin {
       child = elem->NextChildElement(child);
     }
   }
-  void WriteElements(MQXmlElement elem) {
+  bool WriteElements(MQXmlElement elem) {
     if (elem == nullptr || pluginKeyValue.empty()) {
-      return;
+      return false;
     }
     MQXmlElement keyvalue = elem->AddChildElement("KeyValue");
     for (auto kv : pluginKeyValue) {
@@ -189,6 +189,7 @@ class JSMacroPlugin : public MQStationPlugin {
       item->SetAttribute("key", kv.first.c_str());
       item->SetText(kv.second.c_str());
     }
+    return true;
   }
 
   void EmitEvent(const std::string &msg) {

@@ -373,7 +373,7 @@ class MQObjectWrapper : public JSClassBase<MQObjectWrapper> {
   bool Selected() { return obj->GetSelected(); }
   void SetSelected(bool s) { obj->SetSelected(s); }
   bool Visible() { return obj->GetVisible(); }
-  void SetVisible(bool v) { obj->SetVisible(v); }
+  void SetVisible(bool v) { obj->SetVisible(v ? 0xFFFFFFFF : 0); }
   bool Locked() { return obj->GetLocking(); }
   void SetLocked(bool v) { obj->SetLocking(v); }
   int GetDepth() { return obj->GetDepth(); }
@@ -418,7 +418,7 @@ class MQObjectWrapper : public JSClassBase<MQObjectWrapper> {
     }
     obj->Merge(o->obj);
   }
-  JSValue Clone(JSContext* ctx, bool reg) {
+  JSValue Clone(JSContext* ctx) {
     return NewMQObject(ctx, obj->Clone(), -1);
   }
   void OptimizeVertex(float distance) {
@@ -442,7 +442,7 @@ const JSCFunctionListEntry MQObjectWrapper::proto_funcs[] = {
     function_entry<&Freeze>("freeze"),
     function_entry<&Merge>("merge"),
     function_entry<&Clone>("clone"),
-    function_entry<&Clone>("optimizeVertex"),
+    function_entry<&OptimizeVertex>("optimizeVertex"),
     function_entry_getset<&GetWireframe, &SetWireframe>("wireframe"),
 };
 
@@ -731,7 +731,9 @@ class MQDocumentWrapper {
       auto o = doc->GetObject(i);
       if (o != nullptr) {
         JSValue obj = objectCache[o->GetUniqueID()].GetValue();
-        if (obj == JS_UNDEFINED) {
+        auto ow = MQObjectWrapper::Unwrap(obj);
+        if (obj == JS_UNDEFINED || ow == nullptr || ow->obj != o) {
+          JS_FreeValue(ctx, obj);
           obj = NewMQObject(ctx, o, i);
           objectCache.Set(o->GetUniqueID(), JS_DupValue(ctx, obj));
         }
