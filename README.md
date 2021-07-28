@@ -16,7 +16,7 @@ GitHub の `Releases` ページからダウンロードできます．
 
 ## 利用方法
 
-「パネル」→「JavaScript」でウインドウが出ます．jsファイルを指定して実行できます．
+「パネル」→「JavaScript」でプラグインのウインドウが出ます．jsファイルを指定して実行できます．
 
 ![ss](doc/jsmacro.png)
 
@@ -31,34 +31,33 @@ GitHub の `Releases` ページからダウンロードできます．
 
 ## API
 
-メタセコイアのプラグインから呼べる機能を JavaScript から扱いやすいようにラップしてあります．
-個々の関数の動作は [メタセコイアSDK](https://www.metaseq.net/jp/download/sdk/) のドキュメントを参照してください．
-
-#### 注意点
-
-- なるべく通常のArrayと同じように扱えるようにしていますが，push()/pop()などは動作しません．
-- 配列はundefinedの要素が存在する場合(削除操作の後など)があります．連続した配列にしたい場合は `compact()` メソッドを呼んでください．
+- メタセコイアのプラグイン向けのAPIを JavaScript から扱いやすいようにラップしてあります．
+- 利用可能なメソッドの一覧や型定義は [mq_plugin.d.ts](scripts/mq_plugin.d.ts) を参照してください．
+- 個々の関数の動作は [メタセコイアSDK](https://www.metaseq.net/jp/download/sdk/) のドキュメントを参照してください．
 
 ### MQDocument
 
-グローバルに`document`として宣言されています．
+グローバルに`mqdocument`として宣言されています．
 
-- document.objects.length オブジェクト数(ReadOnly)
-- document.objects[index] MQObjectを取得
-- document.objects.append(obj) オブジェクトを追加
-- document.objects.remove(obj) オブジェクトを削除
-- document.materials.length マテリアル数(ReadOnly)
-- document.materials[index] MQMaterialを取得
-- document.materials.append(mat) マテリアルを追加
-- document.materials.remove(mat) マテリアルを削除
-- document.scene シーンを取得
-- document.compact()
-- document.clearSelect()
-- document.isVertexSelected(objIndex, vertIndex)
-- document.setVertexSelected(objIndex, vertIndex, bool)
-- document.isFaceSelected(objIndex, faceIndex)
-- document.setFaceSelected(objIndex, faceIndex, bool)
-- document.currentObjectIndex
+- mqdocument.objects.length オブジェクト数(ReadOnly)
+- mqdocument.objects[index] MQObjectを取得
+- mqdocument.objects.append(obj) オブジェクトを追加
+- mqdocument.objects.remove(obj) オブジェクトを削除
+- mqdocument.materials.length マテリアル数(ReadOnly)
+- mqdocument.materials[index] MQMaterialを取得
+- mqdocument.materials.append(mat) マテリアルを追加
+- mqdocument.materials.remove(mat) マテリアルを削除
+- mqdocument.scene シーンを取得
+- mqdocument.compact()
+- mqdocument.clearSelect()
+- mqdocument.isVertexSelected(objIndex, vertIndex)
+- mqdocument.setVertexSelected(objIndex, vertIndex, bool)
+- mqdocument.isFaceSelected(objIndex, faceIndex)
+- mqdocument.setFaceSelected(objIndex, faceIndex, bool)
+- mqdocument.currentObjectIndex
+
+objects や materials 等はArrayLikeなオブジェクトを返しますが，remove/append以外のメソッドではドキュメントの内容を変更できません．
+配列はundefinedの要素が存在する場合(削除操作の後など)があります．連続した配列にしたい場合は `compact()` メソッドを呼んでください．
 
 ### MQObject
 
@@ -87,7 +86,7 @@ GitHub の `Releases` ページからダウンロードできます．
 - object.visible
 - object.locked
 - object.type
-- object.transform(matrix_or_fun) オブジェクトの全頂点座標を変換します
+- object.applyTransform(matrix_or_fun) オブジェクトの全頂点座標を変換します
 
 新しくオブジェクトを生成する場合は`new MQObject()` で作成し， `document.objects.append(obj)` でドキュメントに追加して下さい．
 コンストラクタの引数を省略した場合は，自動的に衝突しない名前が設定されます．
@@ -95,7 +94,7 @@ GitHub の `Releases` ページからダウンロードできます．
 例：
 
 ```js
-var square = new MQObject("square1");
+let square = new MQObject("square1");
 square.verts.append(0, 0, 0);
 square.verts.append(1, 0, 0);
 square.verts.append(1, 1, 0);
@@ -129,7 +128,7 @@ document.objects.append(square);
 - material.selected
 
 
-新しくマテリアルを生成する場合は`new MQMaterial()` で作成し， append関数でドキュメントに追加して下さい．
+新しくマテリアルを生成する場合は`new MQMaterial()` で作成し， materials.append() 関数でドキュメントに追加して下さい．
 コンストラクタの引数を省略した場合は，自動的に衝突しない名前が設定されます．
 
 例：
@@ -161,12 +160,12 @@ var redIndex = document.materials.append(red);
 
 C++用のSDKに含まれるMQMatrixとは別物です． `.core.js` に実装されています．
 
-`MQObject.transform()`に渡すことでオブジェクトの全頂点を簡単に変換できます．
+`MQObject.applyTransform()`に渡すことでオブジェクトの全頂点を簡単に変換できます．
 
 例：
 
 ```js
-document.objects[0].transform(MQMatrix.rotateMatrix(1,0,0, 15));
+document.objects[0].applyTransform(MQMatrix.rotateMatrix(1,0,0, 15));
 ```
 
 ### その他
@@ -191,15 +190,14 @@ setInterval(() => {
 組み込みのモジュールがいくつかあります
 
 - geom Vertex/Matrix(MQMatrixの実体)
-- dialog 各種ダイアログ表示
+- mqwidget 各種ダイアログ表示
 - fs ファイルアクセス(実装中)
 - child_process プロセス起動(実装中)
 
 ## TODO
 
-- スクリプトからアクセス出来る属性を増やす
+- マテリアル周り
 - メニュー操作自動化
-- ファイルアクセス
 
 # License
 

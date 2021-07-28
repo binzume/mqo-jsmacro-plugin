@@ -9,7 +9,7 @@
 
 ## build
 
-- git clone .../mqo-jsmacro-plugin
+- git clone https://github.com/binzume/mqo-jsmacro-plugin.git
 - cd mqo-jsmacro-plugin
 - (copy mqsdk into mqsdk folder.)
 - git submodule init
