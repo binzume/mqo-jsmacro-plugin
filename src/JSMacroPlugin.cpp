@@ -29,6 +29,7 @@ HINSTANCE hInstance;
 JSModuleDef *InitDialogModule(JSContext *ctx);
 JSModuleDef *InitFsModule(JSContext *ctx);
 JSModuleDef *InitChildProcessModule(JSContext *ctx);
+JSModuleDef *InitBspModule(JSContext *ctx);
 void InstallMQDocument(JSContext *ctx, MQDocument doc,
                        std::map<std::string, std::string> *keyValue = nullptr);
 
@@ -466,14 +467,14 @@ JSModuleDef *JSMacroPlugin::LoadJSModule(JSContext *ctx, const char *path,
 //---------------------------------------------------------------------------------------------------------------------
 
 static JSValue WriteLog(JSContext *ctx, JSValueConst this_val, int argc,
-                         JSValueConst *argv) {
+                        JSValueConst *argv) {
   JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
   plugin->AddMessage(convert_jsvalue<std::string>(ctx, argv[0]), 0);
   return JS_UNDEFINED;
 }
 
 static JSValue WriteError(JSContext *ctx, JSValueConst this_val, int argc,
-                        JSValueConst *argv) {
+                          JSValueConst *argv) {
   JSMacroPlugin *plugin = static_cast<JSMacroPlugin *>(GetPluginClass());
   plugin->AddMessage(convert_jsvalue<std::string>(ctx, argv[0]), 2);
   return JS_UNDEFINED;
@@ -643,6 +644,7 @@ JsContext *JSMacroPlugin::GetJsContext(MQDocument doc,
     // TODO: permission settings.
     InitChildProcessModule(ctx);
     InitFsModule(ctx);
+    InitBspModule(ctx);
 
     InitDialogModule(ctx);
     InstallMQDocument(ctx, doc, &pluginKeyValue);
