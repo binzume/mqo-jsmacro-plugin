@@ -2,7 +2,7 @@
 interface VecXYZ { x: number, y: number, z: number }
 interface VecXYZW { x: number, y: number, z: number, w: number }
 
-declare module "metasequoia" {
+declare module "mqdocument" {
     export interface MQDocument {
         objects: ObjectList;
         materials: MaterialList;
@@ -10,8 +10,8 @@ declare module "metasequoia" {
         currentObjectIndex: number;
         currentObjectIndex: number;
         compact(): void;
-        triangulate(v: VecXYZ[]): VecXYZ[];
-        clearSelect(flags: numbrr = 0): void;
+        triangulate(v: VecXYZ[]): numvber[];
+        clearSelect(flags: number = 0): void;
         isVertexSelected(obj: number, index: number): boolean;
         setVertexSelected(obj: number, index: number, select: boolean): void;
         isFaceSelected(obj: number, index: number): boolean;
@@ -20,6 +20,7 @@ declare module "metasequoia" {
         setPluginData(key: string, value: string): void; // EXPERIMENTAL
         setDrawProxyObject(obj: MQObject, proxy: MQObject); // EXPERIMENTAL
         getGlobalMatrix(obj: MQObject): number[]; // internal use.
+        getObjectByName(name: string): MQObject | null; // .core.js
         addEventListener(event: string, lisntener: (e: any) => void); // .core.js
     }
     export class MQObject {
@@ -31,10 +32,10 @@ declare module "metasequoia" {
         depth: number;
         compact(): void;
         clear(): void;
-        freeze(flags: numbrr = 0): void;
+        freeze(flags: number = 0): void;
         merge(src: MQObject): void;
-        clone(attach: boolean = false): MQObject;
-        optimizeVertex(): void;
+        clone(): MQObject;
+        optimizeVertex(distance: number): void;
         verts: VertexList;
         faces: FaceList;
         selected: boolean;
@@ -44,6 +45,7 @@ declare module "metasequoia" {
         wireframe: boolean; // EXPERIMENTAL
         globalMatrix: number[]; // EXPERIMENTAL
         applyTransform(matrix: { applyTo(p: VecXYZ): void }): void; // .core.js
+        getChildren(recursive: boolean): MQObject[]; // .core.js
     }
     export interface ObjectList extends Array<MQObject> {
         append(obj: MQObject): number;
@@ -156,6 +158,19 @@ declare module "fs" {
     export function writeFile(path: string, content: string): any;
 }
 
+declare module "bsptree" {
+    // Experimental implementation of BSP tree.
+    export type BSPPolygon = { vertices: VecXYZ[], plane: any, src?: BSPPolygon, [key: string]: any };
+    export class BSPTree {
+        constructor(polygons: any[]);
+        build(polygons: any[], epsilon: number): void;
+        raycast(ray: { origin: VecXYZ, direction: VecXYZ }): VecXYZ | null;
+        crassifyPoint(point: VecXYZ, epsilon: number): number;
+        clipPolygons(polygons: BSPPolygon[], inv: boolean, epsilon: number): BSPPolygon[];
+        splitPolygons(src: BSPPolygon[], resultI: BSPPolygon[] | null, resultO: BSPPolygon[] | null, epsilon: number): void;
+    }
+}
+
 // .core.js
 declare module "geom" {
     export class Vector3 {
@@ -208,10 +223,10 @@ declare module "geom" {
 }
 
 // global
-declare type MQDocument = import("metasequoia").MQDocument;
-declare type MQObject = import("metasequoia").MQObject;
+declare type MQDocument = import("mqdocument").MQDocument;
+declare type MQObject = import("mqdocument").MQObject;
 declare var MQObject: { new(name?: string): MQObject };
-declare type MQMaterial = import("metasequoia").MQMaterial;
+declare type MQMaterial = import("mqdocument").MQMaterial;
 declare var MQMaterial: { new(name?: string): MQMaterial };
-declare var mqdocument: import("metasequoia").MQDocument;
+declare var mqdocument: import("mqdocument").MQDocument;
 declare var process: { [key: string]: any };

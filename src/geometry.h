@@ -4,6 +4,7 @@
 #include <cmath>
 #include <format>
 #include <iostream>
+#include <limits>
 #include <string>
 
 namespace geom {
@@ -65,6 +66,7 @@ struct QuaternionT {
   }
 
   T length() const { return std::sqrt(x * x + y * y + z * z + w * w); }
+  T lengthSqr() const { return x * x + y * y + z * z + w * w; }
   T dot(const QuaternionT<T> &v) const {
     return x * v.x + y * v.y + z * v.z + w * v.w;
   }
@@ -78,6 +80,14 @@ struct QuaternionT {
     return Vector3T<T>{ix * w + iw * -x + iy * -z - iz * -y,
                        iy * w + iw * -y + iz * -x - ix * -z,
                        iz * w + iw * -z + ix * -y - iy * -x};
+  }
+
+  static QuaternionT<T> fromAxisAngle(const Vector3T<T> &ax, T rad) {
+    auto s = std::sin(rad / 2);
+    return QuaternionT<T>(ax.x * s, ax.y * s, ax.z * s, std::cos(rad / 2));
+  }
+  std::string to_string() const {
+    return std::format("({},{},{},{})", x, y, z, w);
   }
 };
 
@@ -161,6 +171,33 @@ template <typename T>
 struct RayT {
   Vector3T<T> origin = {0, 0, 0};
   Vector3T<T> direction = {0, 0, 1};
+
+  T distanceToSqr(const Vector3T<T> &point) const {
+    T d = (point - origin).dot(direction);
+    auto o = (d <= 0) ? origin : (origin + direction * d);
+    return (point - o).lengthSqr();
+  }
+  T distanceTo(const Vector3T<T> &point) const {
+    return std::sqrt(distanceToSqr(point));
+  }
+  T distanceTo(const PlaneT<T> &plane) const {
+    T d = plane.normal.dot(direction);
+    if (d == 0) {
+      return std::numeric_limits<T>::lowest();  // TODO: -infinity
+    }
+    return -plane.signedDistanceTo(origin) / d;
+  }
+  bool intersects(const PlaneT<T> &plane, Vector3T<T> &result) const {
+    T len = distanceTo(plane);
+    if (len < 0) {
+      return false;
+    }
+    result = direction * len + origin;
+    return true;
+  }
+  std::string to_string() const {
+    return std::format("[{},{}]", origin.to_string(), direction.to_string());
+  }
 };
 
 template <typename T>
@@ -173,5 +210,6 @@ typedef Vector3T<FloatType> Vector3;
 typedef Matrix4T<FloatType> Matrix4;
 typedef QuaternionT<FloatType> Quaternion;
 typedef PlaneT<FloatType> Plane;
+typedef RayT<FloatType> Ray;
 
 }  // namespace geom

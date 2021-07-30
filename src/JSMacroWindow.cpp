@@ -261,7 +261,5 @@ BOOL JSMacroWindow::onDrawListItem(MQWidgetBase *sender, MQDocument doc,
     }
     param.Canvas->FillRect(param.X, param.Y, param.Width, param.Height);
   }
-  // param.Canvas->DrawText(m_MessageList->GetItem(param.ItemIndex).c_str(),
-  // param.X + 10, param.Y, param.Width, param.Height, false);
   return FALSE;
 }

@@ -50,10 +50,8 @@ struct ItemBinder {
       std::wstring_convert<std::codecvt_utf8<wchar_t>, wchar_t> converter;
       value = to_jsvalue(ctx, converter.to_bytes(((MQEdit*)widget)->GetText()));
     } else if (type == WidgetType::CheckBox) {
-      ((MQCheckBox*)widget)->SetChecked(convert_jsvalue<bool>(ctx, value));
       value = to_jsvalue(ctx, ((MQCheckBox*)widget)->GetChecked());
     } else if (type == WidgetType::ComboBox) {
-      ((MQCheckBox*)widget)->SetChecked(convert_jsvalue<bool>(ctx, value));
       value = to_jsvalue(ctx, ((MQComboBox*)widget)->GetCurrentIndex());
     }
     item.Set("value", JS_DupValue(ctx, value));
@@ -497,7 +495,7 @@ static int DialogModuleInit(JSContext* ctx, JSModuleDef* m) {
                                 (int)std::size(dialog_funcs));
 }
 
-JSModuleDef* InitDialogModule(JSContext* ctx) {
+JSModuleDef* InitMQWidgetModule(JSContext* ctx) {
   JSModuleDef* m = JS_NewCModule(ctx, "mqwidget", DialogModuleInit);
   if (!m) {
     return NULL;

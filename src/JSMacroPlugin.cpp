@@ -26,10 +26,10 @@
 
 HINSTANCE hInstance;
 
-JSModuleDef *InitDialogModule(JSContext *ctx);
+JSModuleDef *InitMQWidgetModule(JSContext *ctx);
 JSModuleDef *InitFsModule(JSContext *ctx);
 JSModuleDef *InitChildProcessModule(JSContext *ctx);
-JSModuleDef *InitBspModule(JSContext *ctx);
+JSModuleDef *InitBSPTreeModule(JSContext *ctx);
 void InstallMQDocument(JSContext *ctx, MQDocument doc,
                        std::map<std::string, std::string> *keyValue = nullptr);
 
@@ -644,9 +644,8 @@ JsContext *JSMacroPlugin::GetJsContext(MQDocument doc,
     // TODO: permission settings.
     InitChildProcessModule(ctx);
     InitFsModule(ctx);
-    InitBspModule(ctx);
-
-    InitDialogModule(ctx);
+    InitBSPTreeModule(ctx);
+    InitMQWidgetModule(ctx);
     InstallMQDocument(ctx, doc, &pluginKeyValue);
 
     TCHAR path[MAX_PATH];

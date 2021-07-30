@@ -5,12 +5,12 @@
 #include <vector>
 
 #include "Utils.h"
-#include "bsp.h"
+#include "bsptree.h"
 #include "qjsutils.h"
 
 using namespace std;
 
-const double MIN_EPS = 1e-10;
+const double MIN_EPS = 1e-8;
 typedef geom::Polygon<double, JSValue> JSPolygon;
 
 template <>
@@ -106,8 +106,7 @@ class JSBSPTree : public JSClassBase<JSBSPTree> {
 
   JSValue SplitPolygons(JSContext* ctx, JSValueConst src, JSValueConst in,
                         JSValueConst out, double eps) {
-    if (!JS_IsArray(ctx, src) || !JS_IsArray(ctx, in) ||
-        !JS_IsArray(ctx, out)) {
+    if (!JS_IsArray(ctx, src)) {
       return JS_EXCEPTION;
     }
 
@@ -117,8 +116,12 @@ class JSBSPTree : public JSClassBase<JSBSPTree> {
     vector<JSPolygon> outer;
     node.splitPolygons(polygons, inner, outer, fmax(eps, MIN_EPS));
     unordered_map<geom::Vector3, JSValue> vcache;
-    ToJSArray(inner, ValueHolder(ctx, in, true), vcache);
-    ToJSArray(outer, ValueHolder(ctx, out, true), vcache);
+    if (JS_IsArray(ctx, in)) {
+      ToJSArray(inner, ValueHolder(ctx, in, true), vcache);
+    }
+    if (JS_IsArray(ctx, out)) {
+      ToJSArray(outer, ValueHolder(ctx, out, true), vcache);
+    }
     return JS_UNDEFINED;
   }
 
@@ -148,17 +151,31 @@ class JSBSPTree : public JSClassBase<JSBSPTree> {
     return unwrap(std::move(ret));
   }
 
-  // returns 0: coplanar  1: out, 2: in
-  int Check(JSContext* ctx, JSValueConst v, double eps) {
-    return node.check(ToVector3(ValueHolder(ctx, v, true)), eps);
+  JSValue Raycast(JSContext* ctx, JSValueConst rayobj) {
+    if (!JS_IsObject(rayobj)) {
+      return JS_EXCEPTION;
+    }
+    ValueHolder r(ctx, rayobj, true);
+    geom::Ray ray(ToVector3(r["origin"]), ToVector3(r["direction"]));
+    geom::Vector3 result;
+    if (node.raycast(ray, result)) {
+      return ToJSValue(ctx, result);
+    }
+    return JS_NULL;
+  }
+
+  // returns 0:coplanar, 1:out, 2:in
+  int ClassifyPoint(JSContext* ctx, JSValueConst v, double eps) {
+    return node.classifyPoint(ToVector3(ValueHolder(ctx, v, true)), eps);
   }
 };
 
 const JSCFunctionListEntry JSBSPTree::proto_funcs[] = {
     function_entry<&Build>("build"),
+    function_entry<&ClassifyPoint>("classifyPoint"),
     function_entry<&SplitPolygons>("splitPolygons"),
     function_entry<&ClipPolygons>("clipPolygons"),
-    function_entry<&Check>("check"),
+    function_entry<&Raycast>("raycast"),
 };
 
 static int ModuleInit(JSContext* ctx, JSModuleDef* m) {
@@ -166,7 +183,7 @@ static int ModuleInit(JSContext* ctx, JSModuleDef* m) {
                             newClassConstructor<JSBSPTree>(ctx, "BSPTree"));
 }
 
-JSModuleDef* InitBspModule(JSContext* ctx) {
+JSModuleDef* InitBSPTreeModule(JSContext* ctx) {
   JSModuleDef* m;
   m = JS_NewCModule(ctx, "bsptree", ModuleInit);
   if (!m) {

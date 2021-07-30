@@ -53,7 +53,7 @@ class Polygon {
         for (size_t i = 0; i < n; i++) {
           size_t j = (i + 1) % n;
           int ti = types[i], tj = types[j];
-          auto vi = vertices[i], vj = vertices[j];
+          const auto &vi = vertices[i], &vj = vertices[j];
           if (ti != TPlane::BACK) f.push_back(vi);
           if (ti != TPlane::FRONT) b.push_back(vi);
           if ((ti | tj) == (TPlane::FRONT | TPlane::BACK)) {
@@ -127,27 +127,44 @@ class BSPNodeT {
     }
   }
 
-  bool raycast(const RayT<TElement> &ray, Vector3T<TElement> &intersection) {
-    if (check(ray.origin, 0) != TPlane::FRONT) {
-      intersection = ray.origin;
+  // This function may NOT works. TODO: coplanar case, bsp includes ray.origin?,
+  // more faster
+  bool raycast(const RayT<TElement> &ray, Vector3T<TElement> &intersection,
+               TElement min = 0,
+               TElement max = std::numeric_limits<TElement>::max()) {
+    auto t = ray.distanceTo(plane);
+    if (t < min || t > max) {
+      return false;
+    }
+    bool backside = plane.signedDistanceTo(ray.origin) < 0;
+    auto near = backside ? back : front;
+    auto far = backside ? front : back;
+    if (near && near->raycast(ray, intersection, min, t)) {
       return true;
     }
-
-    // TODO
-    // if (plane.raycast(ray, intersection)) {...}
+    if (far && far->raycast(ray, intersection, t, max)) {
+      return true;
+    }
+    if (!backside && back == nullptr) {
+      return ray.intersects(plane, intersection);
+    }
+    if (backside && front == nullptr) {
+      intersection = ray.origin + ray.direction * min;
+      return true;
+    }
     return false;
   }
 
   // returns TPlane::FRONT, BACK or COPLANAR
-  int check(const Vector3T<TElement> &v, TElement eps = 0) {
+  int classifyPoint(const Vector3T<TElement> &v, TElement eps = 0) {
     int fb = plane.check(v, eps);
     if (fb == TPlane::BACK) {
-      return back ? back->check(v, eps) : fb;
+      return back ? back->classifyPoint(v, eps) : fb;
     } else if (fb == TPlane::FRONT) {
-      return front ? front->check(v, eps) : fb;
+      return front ? front->classifyPoint(v, eps) : fb;
     }
-    int f = front ? front->check(v, eps) : TPlane::FRONT;
-    int b = back ? back->check(v, eps) : TPlane::BACK;
+    int f = front ? front->classifyPoint(v, eps) : TPlane::FRONT;
+    int b = back ? back->classifyPoint(v, eps) : TPlane::BACK;
     return f == b ? f : fb;
   }
 
