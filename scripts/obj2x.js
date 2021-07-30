@@ -1,7 +1,7 @@
 
 document.compact();
 
-var obj = document.objects[0];
+var obj = mqdocument.objects[mqdocument.currentObjectIndex];
 
 console.log('clone');
 var n = obj.clone();

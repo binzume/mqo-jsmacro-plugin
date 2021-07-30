@@ -177,7 +177,7 @@ declare module "geom" {
         x: number;
         y: number;
         z: number;
-        constructor(x: number | VecXYZ = 0, y: number = 0, z: number = 0);
+        constructor(x: number | VecXYZ | number[] = 0, y: number = 0, z: number = 0);
         puls(v: VecXYZ): Vector3;
         minus(v: VecXYZ): Vector3;
         mul(v: number): Vector3;

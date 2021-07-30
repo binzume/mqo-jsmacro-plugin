@@ -1,13 +1,16 @@
-"use strict";
+// @ts-check
+/// <reference path="mq_plugin.d.ts" />
 
-document.compact();
+import { Vector3, Matrix4 } from "geom";
+
+mqdocument.compact();
 
 // hide all obj.
-document.objects.forEach((o) => {o.visible = false; } );
+mqdocument.objects.forEach((o) => {o.visible = false; } );
 
 // remove old.
-document.objects.filter((o)=> {return o.name.startsWith("game_")} ).forEach((o) => { document.objects.remove(o) } );
-document.materials.filter((o)=> {return o.name.startsWith("game_")} ).forEach((o) => { document.materials.remove(o) } );
+mqdocument.objects.filter((o)=> {return o.name.startsWith("game_")} ).forEach((o) => { mqdocument.objects.remove(o) } );
+mqdocument.materials.filter((o)=> {return o.name.startsWith("game_")} ).forEach((o) => { mqdocument.materials.remove(o) } );
 
 
 function planeXZ(obj, size, mat) {
@@ -32,7 +35,7 @@ function cube(obj, size, mat, tr) {
 		[size, -size, size],
 		[-size, -size, size]
 	];
-	var st = points.map((p) => {p = tr ? tr.transformV(p) : p; return obj.verts.append(p[0], p[1], p[2])})[0];
+	var st = points.map((p) => {let v = new Vector3(p); return obj.verts.append(tr ? tr.applyTo(v) : v)})[0];
 	obj.faces.append([st + 0, st + 1, st + 2, st + 3], mat);
 	obj.faces.append([st + 7, st + 6, st + 5, st + 4], mat);
 	obj.faces.append([st + 1, st + 0, st + 4, st + 5], mat);
@@ -46,18 +49,18 @@ function cube(obj, size, mat, tr) {
 
 var ground = new MQMaterial("game_ground");
 ground.color = {r:0.3, g:0.3, b:0.35};
-var groundIndex = document.materials.append(ground);
+var groundIndex = mqdocument.materials.append(ground);
 
 var building = new MQMaterial("game_building");
 building.color = {r:0.9, g:0.9, b:0.9};
-var buildingIndex = document.materials.append(building);
+var buildingIndex = mqdocument.materials.append(building);
 
-var car = new MQMaterial("game_car");
-car.color = {r:1.0, g:0.0, b:0.0};
-var carIndex = document.materials.append(car);
+var carmat = new MQMaterial("game_car");
+carmat.color = {r:1.0, g:0.0, b:0.0};
+var carIndex = mqdocument.materials.append(carmat);
 
 var field = new MQObject("game_field");
-document.objects.append(field);
+mqdocument.objects.append(field);
 
 planeXZ(field, 1000, groundIndex);
 
@@ -71,7 +74,7 @@ var buildings = [
 	{x: 0, y: 400, w1: 60, w2:40,  h:100}
 ];
 buildings.forEach((b) => {
-	var m = MQMatrix.translateMatrix(b.x,0,b.y).mul( MQMatrix.scaleMatrix(b.w1, b.h, b.w2).mul( MQMatrix.translateMatrix(0,0.5,0) ));
+	var m = Matrix4.translateMatrix(b.x,0,b.y).mul( Matrix4.scaleMatrix(b.w1, b.h, b.w2).mul( Matrix4.translateMatrix(0,0.5,0) ));
 	cube(field, 1, buildingIndex, m);
 });
 
@@ -83,15 +86,15 @@ car.verts.append(0,0,10);
 car.verts.append(-1,0,5);
 car.verts.append(1,0,5);
 car.faces.append([0,1,2], carIndex);
-cube(car, 10, carIndex, MQMatrix.translateMatrix(0,3,0).mul(MQMatrix.scaleMatrix(1,0.4,2)));
-cube(car, 10, carIndex, MQMatrix.translateMatrix(0,6,-1).mul(MQMatrix.scaleMatrix(1,0.6,1)));
-document.objects.append(car);
+cube(car, 10, carIndex, Matrix4.translateMatrix(0,3,0).mul(Matrix4.scaleMatrix(1,0.4,2)));
+cube(car, 10, carIndex, Matrix4.translateMatrix(0,6,-1).mul(Matrix4.scaleMatrix(1,0.6,1)));
+mqdocument.objects.append(car);
 
 var leftObj = new MQObject("game_select_to_LEFT");
 var rightObj = new MQObject("game_select_to_RIGHT");
-document.objects.append(leftObj);
-document.objects.append(rightObj);
-document.scene.fov = 0.1;
+mqdocument.objects.append(leftObj);
+mqdocument.objects.append(rightObj);
+mqdocument.scene.fov = 0.1;
 
 var carVec = {x: 0, y:0, z:0.8 };
 
@@ -112,18 +115,16 @@ setInterval(() => {
 		throw "GameOver";
 	}
 	if (leftObj.selected) {
-		var rot = MQMatrix.rotateMatrix(0,1,0, 0.5);
-		carVec = rot.transformV(carVec);
-		car.transform( MQMatrix.translateMatrix(carPos.x, carPos.y, carPos.z).mul(rot.mul(MQMatrix.translateMatrix(-carPos.x, -carPos.y, -carPos.z)))  );
+		var rot = Matrix4.rotateMatrix(0,1,0, 0.5);
+		carVec = rot.applyTo(carVec);
+		car.applyTransform(Matrix4.translateMatrix(carPos.x, carPos.y, carPos.z).mul(rot.mul(Matrix4.translateMatrix(-carPos.x, -carPos.y, -carPos.z)))  );
 	}
 	if (rightObj.selected) {
-		var rot = MQMatrix.rotateMatrix(0,1,0, -0.5);
-		carVec = rot.transformV(carVec);
-		car.transform( MQMatrix.translateMatrix(carPos.x, carPos.y, carPos.z).mul(rot.mul(MQMatrix.translateMatrix(-carPos.x, -carPos.y, -carPos.z)))  );
+		var rot = Matrix4.rotateMatrix(0,1,0, -0.5);
+		carVec = rot.applyTo(carVec);
+		car.applyTransform( Matrix4.translateMatrix(carPos.x, carPos.y, carPos.z).mul(rot.mul(Matrix4.translateMatrix(-carPos.x, -carPos.y, -carPos.z)))  );
 	}
-	car.transform(MQMatrix.translateMatrix(carVec.x, carVec.y, carVec.z));
-	document.scene.cameraLookAt = carPos;
-	document.clearSelect();
+	car.applyTransform(Matrix4.translateMatrix(carVec.x, carVec.y, carVec.z));
+	mqdocument.scene.cameraLookAt = carPos;
+	mqdocument.clearSelect();
 }, 10);
-
-

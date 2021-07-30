@@ -113,8 +113,7 @@ if (typeof exports === "undefined") {
 	                      ]};
 	let result = dialog.modalDialog(content, ["OK","Cancel"]);
 	if (result && result.button == 0) { // button 0 = OK
-		// test
-		let dst = document.objects[0];
+		let dst = mqdocument.objects[mqdocument.currentObjectIndex];
 		let r = involuteGear(dst, parseFloat(result.values["m"]), parseFloat(result.values["n"]));
 		console.log("pitch R=" + r.r);
 	}
