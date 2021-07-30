@@ -78,9 +78,9 @@ class Quaternion {
 		);
 	}
 	static fromAxisAngle(v, rad) {
-		let s = Math.sin(rad) / 2;
+		let s = Math.sin(rad / 2);
 		return new Quaternion(
-			v.x * s, v.y * s, v.z * s, Math.cos(rad) / 2
+			v.x * s, v.y * s, v.z * s, Math.cos(rad / 2)
 		);
 	}
 }
@@ -219,9 +219,9 @@ globalThis.module = (function () {
 globalThis.require = module.require;  // deprecated
 
 // Built-in functions
-globalThis.alert = dialog.alertDialog; // alert(message);
-globalThis.confirm = dialog.confirmDialog; // confirm(message) -> boolean
-globalThis.prompt = dialog.promptDialog; // confirm(message, default) -> value
+globalThis.alert = dialog.alertDialog;
+globalThis.confirm = dialog.confirmDialog;
+globalThis.prompt = dialog.promptDialog;
 globalThis.console = {
 	log(...v) { process.stdout.write(v.join(" ")); },
 	error(...v) { process.stderr.write(v.join(" ")); },
