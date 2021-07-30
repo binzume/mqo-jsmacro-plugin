@@ -3,14 +3,13 @@
 
 JavaScriptでメタセコイアのマクロを書けるようにするプラグインです．
 
-
 ## ダウンロード＆インストール
 
 GitHub の `Releases` ページからダウンロードできます．
 [`JSMacro.zip`](https://github.com/binzume/mqo-jsmacro-plugin/releases/latest) を展開し，
 メタセコイアの `Plugins/Station` ディレクトリに `JSMacro.dll` と `JSMacro.dll.core.js` を配置して下さい．
 
-現在ダウンロードできるDLLは**64bit版**のみです．(32ビット版は余裕があったら用意するかもしれませんが，必要な場合はソースからビルドして下さい...)
+現在ダウンロードできるDLLは**64bit Windows版**のみです．(32ビット版は余裕があったら用意するかもしれませんが，必要な場合はソースからビルドして下さい...)
 
 ソースからのプラグインのビルド方法 [doc/BUILD.md](doc/BUILD.md) を参照してください．
 
@@ -32,12 +31,12 @@ GitHub の `Releases` ページからダウンロードできます．
 ## API
 
 - メタセコイアのプラグイン向けのAPIを JavaScript から扱いやすいようにラップしてあります．
-- 利用可能なメソッドの一覧や型定義は [mq_plugin.d.ts](scripts/mq_plugin.d.ts) を参照してください．
+- 利用可能なモジュールやメソッドの一覧や型定義は [mq_plugin.d.ts](scripts/mq_plugin.d.ts) を参照してください．
 - 個々の関数の動作は [メタセコイアSDK](https://www.metaseq.net/jp/download/sdk/) のドキュメントを参照してください．
 
 ### MQDocument
 
-グローバルに`mqdocument`として宣言されています．
+グローバルに`mqdocument`として宣言されています．(互換性のため `document` でも参照できますが `mqdocument` の方を使用してください)
 
 - mqdocument.objects.length オブジェクト数(ReadOnly)
 - mqdocument.objects[index] MQObjectを取得
@@ -88,7 +87,7 @@ objects や materials 等はArrayLikeなオブジェクトを返しますが，r
 - object.type
 - object.applyTransform(matrix_or_fun) オブジェクトの全頂点座標を変換します
 
-新しくオブジェクトを生成する場合は`new MQObject()` で作成し， `document.objects.append(obj)` でドキュメントに追加して下さい．
+新しくオブジェクトを生成する場合は`new MQObject()` で作成し， `mqdocument.objects.append(obj)` でドキュメントに追加して下さい．
 コンストラクタの引数を省略した場合は，自動的に衝突しない名前が設定されます．
 
 例：
@@ -136,7 +135,7 @@ document.objects.append(square);
 ```js
 var red = new MQMaterial("red1");
 red.color = {r:1.0, g:0.0, b:0.0};
-var redIndex = document.materials.append(red);
+var redIndex = mqdocument.materials.append(red);
 ```
 
 #### MQMaterial.color
@@ -149,29 +148,28 @@ var redIndex = document.materials.append(red);
 
 カメラ情報のみアクセスできます．
 
-- document.scene.cameraPosition → `{x: X, y: Y, z: Z}`
-- document.scene.cameraLookAt → `{x: X, y: Y, z: Z}`
-- document.scene.cameraAngle → `{bank: B, head: H, pitch: Z}`
-- document.scene.rotationCenter
-- document.scene.zoom
-- document.scene.fov
+- mqdocument.scene.cameraPosition → `{x: X, y: Y, z: Z}`
+- mqdocument.scene.cameraLookAt → `{x: X, y: Y, z: Z}`
+- mqdocument.scene.cameraAngle → `{bank: B, head: H, pitch: Z}`
+- mqdocument.scene.rotationCenter
+- mqdocument.scene.zoom
+- mqdocument.scene.fov
 
-### MQMatrix
 
-C++用のSDKに含まれるMQMatrixとは別物です． `.core.js` に実装されています．
+### 組み込みモジュール
 
-`MQObject.applyTransform()`に渡すことでオブジェクトの全頂点を簡単に変換できます．
+プラグイン組み込みのモジュールがいくつかあります．他にも `scripts/modules` 以下にも再利用できそうなものを置いてあります．
 
-例：
+- geom: Vertex3,Matrix4,Quaternion,Plane 等の頻繁に使うクラス．
+- mqwidget: 各種ダイアログやウインドウの生成
+- child_process: プロセス起動
+- fs: ファイルアクセス
+- bsptree: シンプルなBinary Space Partition Treeの実装．C++で書かれているのでjsで処理するよりは高速
 
-```js
-document.objects[0].applyTransform(MQMatrix.rotateMatrix(1,0,0, 15));
-```
-
-### その他
+### 組み込み関数
 
 - console.log("message") メッセージをログに出力
-- alert/prompt/confirm ダイアログ表示
+- alert()/prompt()/confirm() ダイアログ表示
 - setInterval(), setTimeout() タイマー
 - module.include(scriptPath) 別スクリプトの読み込み＆実行(仮実装)
 - module.require(scriptPath) CommonJS形式のモジュール読み込み(仮実装)
@@ -180,30 +178,17 @@ document.objects[0].applyTransform(MQMatrix.rotateMatrix(1,0,0, 15));
 
 ```js
 setInterval(() => {
-	var originalLookAt = document.scene.cameraLookAt;
-	document.scene.cameraPosition = MQMatrix.rotateMatrix(0,1,0, 1).transformV(document.scene.cameraPosition);
-	document.scene.cameraLookAt = originalLookAt;
+	var originalLookAt = mqdocument.scene.cameraLookAt;
+	mqdocument.scene.cameraPosition = MQMatrix.rotateMatrix(0,1,0, 1).transformV(mqdocument.scene.cameraPosition);
+	mqdocument.scene.cameraLookAt = originalLookAt;
 }, 10);
 ```
-
-
-組み込みのモジュールがいくつかあります
-
-- geom Vertex/Matrix(MQMatrixの実体)
-- mqwidget 各種ダイアログ表示
-- fs ファイルアクセス(実装中)
-- child_process プロセス起動(実装中)
-
-## TODO
-
-- マテリアル周り
-- メニュー操作自動化
 
 # License
 
 MIT License
 
-また以下のライブラリに依存しています．
+また，以下のライブラリに依存しています．
 
 - https://github.com/c-smile/quickjspp
 - https://bellard.org/quickjs/
