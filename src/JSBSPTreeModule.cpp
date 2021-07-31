@@ -151,14 +151,14 @@ class JSBSPTree : public JSClassBase<JSBSPTree> {
     return unwrap(std::move(ret));
   }
 
-  JSValue Raycast(JSContext* ctx, JSValueConst rayobj) {
+  JSValue Raycast(JSContext* ctx, JSValueConst rayobj, double eps) {
     if (!JS_IsObject(rayobj)) {
       return JS_EXCEPTION;
     }
     ValueHolder r(ctx, rayobj, true);
     geom::Ray ray(ToVector3(r["origin"]), ToVector3(r["direction"]));
     geom::Vector3 result;
-    if (node.raycast(ray, result)) {
+    if (node.raycast(ray, result, fmax(eps, MIN_EPS))) {
       return ToJSValue(ctx, result);
     }
     return JS_NULL;

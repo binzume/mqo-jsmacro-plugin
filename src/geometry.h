@@ -153,7 +153,7 @@ struct PlaneT {
     auto n = (b - a).cross(c - a).normalized();
     return PlaneT<T>(n, n.dot(a));
   }
-  int check(const Vector3T<T> &v, T eps = 0) const {
+  int classifyPoint(const Vector3T<T> &v, T eps = 0) const {
     T t = signedDistanceTo(v);
     return (t < -eps) ? BACK : (t > eps) ? FRONT : COPLANAR;
   }

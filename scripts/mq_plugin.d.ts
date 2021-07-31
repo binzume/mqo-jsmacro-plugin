@@ -164,7 +164,7 @@ declare module "bsptree" {
     export class BSPTree {
         constructor(polygons: any[]);
         build(polygons: any[], epsilon: number): void;
-        raycast(ray: { origin: VecXYZ, direction: VecXYZ }): VecXYZ | null;
+        raycast(ray: { origin: VecXYZ, direction: VecXYZ }, epsilon?: number): VecXYZ | null;
         crassifyPoint(point: VecXYZ, epsilon: number): number;
         clipPolygons(polygons: BSPPolygon[], inv: boolean, epsilon: number): BSPPolygon[];
         splitPolygons(src: BSPPolygon[], resultI: BSPPolygon[] | null, resultO: BSPPolygon[] | null, epsilon: number): void;
@@ -205,11 +205,17 @@ declare module "geom" {
         clone(): Vector3;
         toString(): string;
         static fromAxisAngle(v: Vector3, rad: number): Quaternion;
+        static fromAngle(x: number, y: number, z: number): Quaternion;
     }
     export class Matrix4 {
         constructor(mat: number[]);
         m: number[16];
         applyTo(v: VecXYZ): Vector3;
+        mul(m: Matrix4): Matrix4;
+        static multiply(m1: Matrix4, m2: Matrix4, result: Matrix4): Matrix4;
+        static scaleMatrix(x: number, y: number, z: number): Matrix4;
+        static translateMatrix(x: number, y: number, z: number): Matrix4;
+        static rotateMatrix(x: number, y: number, z: number, rad: number): Matrix4;
     }
     export class Plane {
         constructor(normal: Vector3, w: number);

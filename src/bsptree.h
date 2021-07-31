@@ -25,7 +25,6 @@ class Polygon {
   }
 
   // split this polygon by the plane.
-  // refs: https://github.com/evanw/csg.js/
   int split(const TPlane &splane, std::vector<Polygon<T, O>> &coplanar_front,
             std::vector<Polygon<T, O>> &coplanar_back,
             std::vector<Polygon<T, O>> &front, std::vector<Polygon<T, O>> &back,
@@ -33,7 +32,7 @@ class Polygon {
     int type_sum = 0;
     std::vector<int> types(vertices.size());
     for (size_t i = 0; i < vertices.size(); i++) {
-      types[i] = splane.check(vertices[i], eps);
+      types[i] = splane.classifyPoint(vertices[i], eps);
       type_sum |= types[i];
     }
     switch (type_sum) {
@@ -100,10 +99,10 @@ class BSPNodeT {
     if (!plane.isValid() && polygons.size() > 0) {
       plane = polygons[0].plane;
     }
-    std::vector<TPolygon> f, b, unused;
+    std::vector<TPolygon> f, b, ignore;
     for (const auto &p : polygons) {
-      p.split(plane, unused, unused, f, b, eps);
-      unused.clear();
+      p.split(plane, ignore, ignore, f, b, eps);
+      ignore.clear();
     }
     if (f.size() > 0) front = new BSPNodeT<TPlane>(f, eps);
     if (b.size() > 0) back = new BSPNodeT<TPlane>(b, eps);
@@ -127,37 +126,42 @@ class BSPNodeT {
     }
   }
 
-  // This function may NOT works. TODO: coplanar case, bsp includes ray.origin?,
-  // more faster
+  // TODO: returns plane normal, remove eps, check coplanar case, and more
+  // faster...
   bool raycast(const RayT<TElement> &ray, Vector3T<TElement> &intersection,
-               TElement min = 0,
+               TElement eps = 0, TElement min = 0,
                TElement max = std::numeric_limits<TElement>::max()) {
-    auto t = ray.distanceTo(plane);
-    if (t < min || t > max) {
-      return false;
-    }
-    bool backside = plane.signedDistanceTo(ray.origin) < 0;
+    bool backside =
+        plane.signedDistanceTo(ray.origin + ray.direction * min) < 0;
     auto near = backside ? back : front;
-    auto far = backside ? front : back;
-    if (near && near->raycast(ray, intersection, min, t)) {
-      return true;
-    }
-    if (far && far->raycast(ray, intersection, t, max)) {
-      return true;
-    }
-    if (!backside && back == nullptr) {
-      return ray.intersects(plane, intersection);
-    }
-    if (backside && front == nullptr) {
+    if (backside && back == nullptr) {
       intersection = ray.origin + ray.direction * min;
       return true;
+    }
+    auto t = ray.distanceTo(plane);
+    if (t < min || t > max) {
+      if (near) {
+        return near->raycast(ray, intersection, eps, min, max);
+      }
+    } else {
+      if (near && near->raycast(ray, intersection, eps, min, t - eps)) {
+        return true;
+      }
+      auto far = backside ? front : back;
+      if (!backside && back == nullptr) {
+        intersection = ray.origin + ray.direction * t;
+        return true;
+      }
+      if (far) {
+        return far->raycast(ray, intersection, eps, t + eps, max);
+      }
     }
     return false;
   }
 
   // returns TPlane::FRONT, BACK or COPLANAR
   int classifyPoint(const Vector3T<TElement> &v, TElement eps = 0) {
-    int fb = plane.check(v, eps);
+    int fb = plane.classifyPoint(v, eps);
     if (fb == TPlane::BACK) {
       return back ? back->classifyPoint(v, eps) : fb;
     } else if (fb == TPlane::FRONT) {
