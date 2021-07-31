@@ -147,26 +147,24 @@ class FaceWrapper {
   JSValue GetPoints(JSContext* ctx) {
     ValueHolder points(ctx, JS_NewArray(ctx));
     int count = obj->GetFacePointCount(index);
-    int* vv = new int[count];
-    obj->GetFacePointArray(index, vv);
+    std::vector<int> indices(count);
+    obj->GetFacePointArray(index, indices.data());
     for (int i = 0; i < count; i++) {
-      points.Set(i, vv[i]);
+      points.Set(i, indices[i]);
     }
-    delete[] vv;
     return points.GetValue();
   }
   JSValue GetUV(JSContext* ctx) {
     ValueHolder points(ctx, JS_NewArray(ctx));
     int count = obj->GetFacePointCount(index);
-    MQCoordinate* uva = new MQCoordinate[count];
-    obj->GetFaceCoordinateArray(index, uva);
+    std::vector<MQCoordinate> uva(count);
+    obj->GetFaceCoordinateArray(index, uva.data());
     for (int i = 0; i < count; i++) {
       ValueHolder u(ctx);
       u.Set("u", uva[i].u);
       u.Set("v", uva[i].v);
       points.Set(i, u);
     }
-    delete[] uva;
     return points.GetValue();
   }
   void Invert() { obj->InvertFace(index); }
@@ -208,13 +206,12 @@ class FaceArray {
       mat = v["material"].To<int>();
       v = v["points"];
     }
-    int* indices = new int[count];
+    std::vector<int> indices(count);
     for (uint32_t i = 0; i < count; i++) {
       indices[i] = v[i].To<int32_t>();
     }
 
-    int f = obj->AddFace(count, indices);
-    delete[] indices;
+    int f = obj->AddFace(count, indices.data());
     obj->SetFaceMaterial(f, mat);
     return f;
   }
@@ -232,12 +229,11 @@ class FaceArray {
     if (points.IsArray()) {
       obj->DeleteFace(index);
       uint32_t count = points.Length();
-      int* pp = new int[count];
+      std::vector<int> indices(count);
       for (uint32_t i = 0; i < count; i++) {
-        pp[i] = points[i].To<int>();
+        indices[i] = points[i].To<int>();
       }
-      obj->InsertFace(index, count, pp);
-      delete[] pp;
+      obj->InsertFace(index, count, indices.data());
     }
     auto mat = face["material"];
     if (!mat.IsUndefined()) {
@@ -732,7 +728,9 @@ class MQDocumentWrapper {
       if (o != nullptr) {
         JSValue obj = objectCache[o->GetUniqueID()].GetValue();
         auto ow = MQObjectWrapper::Unwrap(obj);
-        if (obj == JS_UNDEFINED || ow == nullptr || ow->obj != o) {
+        if (ow && ow->obj == o) {
+          ow->index = i; // update object index
+        } else {
           JS_FreeValue(ctx, obj);
           obj = NewMQObject(ctx, o, i);
           objectCache.Set(o->GetUniqueID(), JS_DupValue(ctx, obj));
@@ -753,8 +751,7 @@ class MQDocumentWrapper {
   }
 
   JSValue AddObject(JSContext* ctx, JSValue obj) {
-    MQObjectWrapper* o =
-        (MQObjectWrapper*)JS_GetOpaque2(ctx, obj, MQObjectWrapper::class_id);
+    MQObjectWrapper* o = MQObjectWrapper::Unwrap(obj);
     if (o == nullptr) {
       return JS_EXCEPTION;
     }
@@ -767,8 +764,7 @@ class MQDocumentWrapper {
       doc->DeleteObject(convert_jsvalue<int>(ctx, obj));
       return JS_UNDEFINED;
     }
-    MQObjectWrapper* o =
-        (MQObjectWrapper*)JS_GetOpaque2(ctx, obj, MQObjectWrapper::class_id);
+    MQObjectWrapper* o = MQObjectWrapper::Unwrap(obj);
     if (o == nullptr) {
       return JS_EXCEPTION;
     }
