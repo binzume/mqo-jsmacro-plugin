@@ -10,7 +10,8 @@
 
 using namespace std;
 
-const double MIN_EPS = 1e-8;
+const double MIN_EPSILON = 1e-10;
+const double DEFAULT_EPSILON = 1e-6;
 typedef geom::Polygon<double, JSValue> JSPolygon;
 
 template <>
@@ -94,14 +95,15 @@ class JSBSPTree : public JSClassBase<JSBSPTree> {
   JSBSPTree(JSContext* ctx, JSValueConst this_val, int argc,
             JSValueConst* argv) {
     if (argc > 0) {
-      Build(ctx, argv[0], MIN_EPS);
+      Build(ctx, argv[0], DEFAULT_EPSILON);
     }
   }
 
   void Build(JSContext* ctx, JSValueConst src, double eps) {
     vector<JSPolygon> polygons;
+    eps = fmax(std::isnan(eps) ? DEFAULT_EPSILON : eps, MIN_EPSILON);
     ToPolygons(ValueHolder(ctx, src, true), polygons);
-    node.build(polygons, fmax(eps, MIN_EPS));
+    node.build(polygons, eps);
   }
 
   JSValue SplitPolygons(JSContext* ctx, JSValueConst src, JSValueConst in,
@@ -109,12 +111,13 @@ class JSBSPTree : public JSClassBase<JSBSPTree> {
     if (!JS_IsArray(ctx, src)) {
       return JS_EXCEPTION;
     }
+    eps = fmax(std::isnan(eps) ? DEFAULT_EPSILON : eps, MIN_EPSILON);
 
     vector<JSPolygon> polygons;
     ToPolygons(ValueHolder(ctx, src, true), polygons);
     vector<JSPolygon> inner;
     vector<JSPolygon> outer;
-    node.splitPolygons(polygons, inner, outer, fmax(eps, MIN_EPS));
+    node.splitPolygons(polygons, inner, outer, eps);
     unordered_map<geom::Vector3, JSValue> vcache;
     if (JS_IsArray(ctx, in)) {
       ToJSArray(inner, ValueHolder(ctx, in, true), vcache);
@@ -130,6 +133,7 @@ class JSBSPTree : public JSClassBase<JSBSPTree> {
     if (!JS_IsArray(ctx, src)) {
       return JS_EXCEPTION;
     }
+    eps = fmax(std::isnan(eps) ? DEFAULT_EPSILON : eps, MIN_EPSILON);
 
     ValueHolder pp(ctx, src, true);
     uint32_t sz = pp.Length();
@@ -140,7 +144,7 @@ class JSBSPTree : public JSClassBase<JSBSPTree> {
       vector<JSPolygon> inner;
       vector<JSPolygon> outer;
       vector<JSPolygon> polygons{ToPolygon(pp[i])};
-      node.splitPolygons(polygons, inner, outer, fmax(eps, MIN_EPS));
+      node.splitPolygons(polygons, inner, outer, eps);
       if ((returnInner ? outer : inner).size() == 0) {
         ret.Set(ret.Length(), pp[i]);
       } else {
@@ -155,10 +159,11 @@ class JSBSPTree : public JSClassBase<JSBSPTree> {
     if (!JS_IsObject(rayobj)) {
       return JS_EXCEPTION;
     }
+    eps = fmax(std::isnan(eps) ? DEFAULT_EPSILON : eps, MIN_EPSILON);
     ValueHolder r(ctx, rayobj, true);
     geom::Ray ray(ToVector3(r["origin"]), ToVector3(r["direction"]));
     geom::Vector3 result;
-    if (node.raycast(ray, result, fmax(eps, MIN_EPS))) {
+    if (node.raycast(ray, result, eps)) {
       return ToJSValue(ctx, result);
     }
     return JS_NULL;
