@@ -32,29 +32,32 @@ const CSG_TYPES = [TYPE_UNION, TYPE_SUB, TYPE_AND, TYPE_INV];
 const SETTING_KEY_PREFIX = 'CSG_OBJCT_';
 
 class MeshBuilder {
-    constructor() {
-        this.slices = 32;
+    constructor(slices = 32) {
+        this.slices = slices;
         /**@type {Record<string, CSGObject>} */
         this.csgObj = {};
         this.buildStartTime = 0;
         this.primitives = {
-            CUBE: (p) => CSGPrimitive.cube(p.size),
-            BOX: (p) => CSGPrimitive.box(p.width, p.height, p.depth),
-            SPHERE: (p) => CSGPrimitive.sphere(p.radius, this.slices, this.slices / 2),
-            CYLINDER: (p) => CSGPrimitive.cylinder(p.radius, p.height, this.slices),
+            CUBE: (p) => CSGPrimitive.cube(p),
+            BOX: (p) => CSGPrimitive.box(p),
+            SPHERE: (p) => CSGPrimitive.sphere(p, this.slices, this.slices / 2),
+            CYLINDER: (p) => CSGPrimitive.cylinder(p, this.slices),
+            PLANE: (p) => CSGPrimitive.plane(p),
         };
         this.evaluator = new CSGEval();
     }
     /**
      * @param {MQObject} obj 
+     * @param {MQObject} dst 
      */
-    build(obj) {
-        obj.clear();
-        obj.compact();
+    build(obj, dst = null) {
+        dst = dst || obj;
+        dst.clear();
+        dst.compact();
         this.buildStartTime = Date.now();
         this.buildCsg(obj);
         this.log("buildCsg");
-        csgToObject(obj, this.csgObj[obj.name], true, true);
+        csgToObject(dst, this.csgObj[obj.name], true, true);
         this.log("finished.");
     }
     /**
@@ -71,14 +74,17 @@ class MeshBuilder {
         let spec = (d && d != "") ? JSON.parse(d) : {};
         this.log("building... " + spec.type + " " + obj.name);
         if (spec.type == TYPE_PRIMITIVE) {
-            this.csgObj[obj.name] = this.buildPrimitive(spec.primitive, obj);
+            this.csgObj[obj.name] = this.buildPrimitive(spec.primitive, obj)?.transformed(new Matrix4(obj.globalMatrix));
         } else if (spec.type == TYPE_OBJREF) {
             this.buildCsg(mqdocument.getObjectByName(spec.objref.name));
-            this.csgObj[obj.name] = this.csgObj[spec.objref.name];
+            this.csgObj[obj.name] = this.csgObj[spec.objref.name]?.transformed(new Matrix4(obj.globalMatrix));
         } else if (spec.type == TYPE_CSG) {
             this.csgObj[obj.name] = this.doCSG(spec.csg, obj);
         } else if (spec.type == TYPE_EVAL) {
-            this.csgObj[obj.name] = this.evaluator.evalExp(spec.eval);
+            let m = obj.name.match("csg:(.*)");
+            this.csgObj[obj.name] = this.evaluator.evalExp((m && m[0]) || spec.eval);
+        } else if (spec.type == TYPE_IGNORE) {
+            this.csgObj[obj.name] = null;
         } else {
             this.csgObj[obj.name] = new CSGObject(toCSGPolygons(obj));
         }
@@ -95,8 +101,13 @@ class MeshBuilder {
         return csg;
     }
     getTransformed(obj) {
-        return this.csgObj[obj.name].transformed(new Matrix4(obj.transform.matrix));
+        return this.csgObj[obj.name];
     }
+    /**
+     * @param {object} c 
+     * @param {MQObject} obj 
+     * @returns 
+     */
     doCSG(c, obj) {
         let children = obj.getChildren();
         if (children.length == 0) {
@@ -105,18 +116,19 @@ class MeshBuilder {
         for (let o of children) {
             this.buildCsg(o);
         }
-        let csg = this.getTransformed(children.shift());
+        let targets = children.map(c => this.csgObj[c.name]).filter(o => o != null);
+        let csg = targets.shift();
         if (c.type == TYPE_UNION || c.type == TYPE_INV) {
-            for (let o of children) {
-                csg = csg.union(this.getTransformed(o));
+            for (let o of targets) {
+                csg = csg.union(o);
             }
         } else if (c.type == TYPE_SUB) {
-            for (let o of children) {
-                csg = csg.subtract(this.getTransformed(o));
+            for (let o of targets) {
+                csg = csg.subtract(o);
             }
         } else if (c.type == TYPE_AND) {
-            for (let o of children) {
-                csg = csg.intersect(this.getTransformed(o));
+            for (let o of targets) {
+                csg = csg.intersect(o);
             }
         }
         if (c.type == TYPE_INV) {
@@ -135,9 +147,23 @@ class MeshBuilder {
 class CSGEval {
     constructor(csgObjs) {
         /** @type {Record<string, (params:string[])=>CSGObject>} */
-        this.factories = {};
-        /** @type {Record<string, (stc:CSGObject, params:string[])=>CSGObject>} */
-        this.modifiers = {};
+        this.factories = {
+            cube: (p) => CSGPrimitive.box({ size: p[0] }),
+            box: (p) => CSGPrimitive.cube({ width: p[0], height: p[1], depth: p[2] }),
+            sphere: (p) => CSGPrimitive.sphere({ radius: p[0] }, p[1], p[2] ?? p[1]),
+            cylinder: (p) => CSGPrimitive.cylinder({ radius: p[0], height: p[1] }, p[2]),
+            plane: (p) => CSGPrimitive.plane({ width: p[0], height: p[1] ?? p[0] }),
+        };
+        /** @type {Record<string, (obj:CSGObject, params:string[])=>CSGObject>} */
+        this.modifiers = {
+            scale: (o, p) => o.transformed(Matrix4.scaleMatrix(+p[0], +p[1], +p[2])),
+            mv: (o, p) => o.transformed(Matrix4.translateMatrix(+p[0], +p[1], +p[2])),
+            rotate: (o, p) => o.transformed(Matrix4.rotateMatrix(+p[0], +p[1], +p[2], +p[3])),
+            rotateX: (o, p) => o.transformed(Matrix4.rotateMatrix(1, 0, 0, +p[0])),
+            rotateY: (o, p) => o.transformed(Matrix4.rotateMatrix(0, 1, 0, +p[0])),
+            rotateZ: (o, p) => o.transformed(Matrix4.rotateMatrix(0, 0, 1, +p[0])),
+        };
+        /** @type {Record<string,CSGObject>} */
         this.csgObjects = csgObjs;
     }
     /**
@@ -147,8 +173,8 @@ class CSGEval {
     evalExp(exp) {
         let prefix = "_tmp", seq = 0, needclean = false;
         let csgs = this.csgObjects;
-        let functions = this.factories;
-        let methods = this.modifiers;
+        let factories = this.factories;
+        let modifiers = this.modifiers;
         exp = '(' + exp.replace(/\s+/, '') + ')';
         do {
             console.log(exp);
@@ -156,21 +182,21 @@ class CSGEval {
             exp = exp.replace(/\(([0-9]+)\)/, "($1,)"); // (123) => (123,)
             exp = exp.replace(/\((\w+)\)/, "$1"); // (a) => a
             exp = exp.replace(/(\w+)\.(\w+)\(([^)]*)\)/g, (a, op1, f, params) => {
-                if (!methods[f]) {
+                if (!modifiers[f]) {
                     alert("ERROR func: " + op1 + ":" + f + " " + params);
                     throw ("ERROR func: " + op1 + ":" + f + " " + params);
                 }
                 let src = csgs[op1] ? csgs[op1].clone() : new CSGObject(toCSGPolygons(mqdocument.getObjectByName(op1)));
-                csgs[prefix + seq] = methods[f](src, params.split(","));
+                csgs[prefix + seq] = modifiers[f](src, params.split(","));
                 return prefix + (seq++);
             });
             exp = exp.replace(/\.?(\w+)\(([^)]*)\)/g, (a, f, params) => {
                 if (a.startsWith(".")) return a;
-                if (!functions[f]) {
+                if (!factories[f]) {
                     alert("ERROR func: " + f + " " + params);
                     throw ("ERROR func: " + f + " " + params);
                 }
-                csgs[prefix + seq] = functions[f](params.split(","));
+                csgs[prefix + seq] = factories[f](params.split(","));
                 return prefix + (seq++);
             });
             if (exp != lastexp) {
@@ -218,28 +244,25 @@ class PreviewObject {
             mqdocument.setDrawProxyObject(this.target, this.object);
         }
     }
-    sphere(r) {
+    setPrimitive(primitive) {
         let ctx = this._newPrimitive();
-        ctx.sphere(r, 16, 8);
+        if (primitive.type == TYPE_CUBE) {
+            ctx.cube(primitive);
+        } else if (primitive.type == TYPE_BOX) {
+            ctx.box(primitive);
+        } else if (primitive.type == TYPE_SPHERE) {
+            ctx.sphere(primitive, 16, 8);
+        } else if (primitive.type == TYPE_CYLINDER) {
+            ctx.cylinder(primitive, 20);
+        } else if (primitive.type == TYPE_PLANE) {
+            ctx.plane(primitive);
+        }
     }
-    box(w, h, d) {
-        let ctx = this._newPrimitive();
-        ctx.box(w, h, d);
-    }
-    cube(size = 1) {
-        let ctx = this._newPrimitive();
-        ctx.cube(size);
-    }
-    cylinder(r, h, s = 20) {
-        let ctx = this._newPrimitive();
-        ctx.cylinder(r, h, s);
-    }
-    plane(size = 1) {
-        let ctx = this._newPrimitive();
-        ctx.plane(size);
+    clear() {
+        this.object.clear();
     }
     _newPrimitive() {
-        this.object.clear();
+        this.clear();
         return new PrimitiveModeler(this.object, this.material);
     }
 }
@@ -251,6 +274,7 @@ class NodeObjectWindow {
         this.object = null;
         this.nodeSpec = {};
         this.previewPrimitive = false;
+        this.previewCSG = true; // No GUI settings
         this.preview = new PreviewObject();
         this.update();
 
@@ -311,18 +335,18 @@ class NodeObjectWindow {
         let obj = this.object;
         let orgNodeType = nodeSpec.type;
         let orgPrimitiveType = nodeSpec.primitive?.type;
-        nodeSpec.type = NODE_TYPES[f.getValue('nodeType')];
+        nodeSpec.type = NODE_TYPES[+f.getValue('nodeType')];
         if (nodeSpec.type == TYPE_PRIMITIVE) {
-            nodeSpec.primitive = nodeSpec.primitive || {};
-            nodeSpec.primitive.type = PRIMITIVE_TYPES[f.getValue('shapeType')];
+            nodeSpec.primitive = nodeSpec.primitive || { type: TYPE_SPHERE };
+            nodeSpec.primitive.type = PRIMITIVE_TYPES[+f.getValue('shapeType')];
         } else if (nodeSpec.type == TYPE_CSG) {
-            nodeSpec.csg = nodeSpec.csg || {};
-            nodeSpec.csg.type = CSG_TYPES[f.getValue('csgType')];
+            nodeSpec.csg = nodeSpec.csg || { type: TYPE_UNION };
+            nodeSpec.csg.type = CSG_TYPES[+f.getValue('csgType')];
         } else if (nodeSpec.type == TYPE_OBJREF) {
             nodeSpec.objref = nodeSpec.objref || {};
             let obj = mqdocument.objects[+f.getValue('refTarget')];
-            nodeSpec.objref.id = obj.id;
-            nodeSpec.objref.name = obj.name;
+            nodeSpec.objref.id = obj ? obj.id : 0;
+            nodeSpec.objref.name = obj ? obj.name : "";
         }
         if (orgNodeType != nodeSpec.type || orgPrimitiveType != nodeSpec.primitive?.type) {
             this.form.setContent(this.buildObjectForm(obj, nodeSpec));
@@ -337,6 +361,8 @@ class NodeObjectWindow {
                 primitive.height = +f.getValue('height');
                 primitive.depth = +f.getValue('depth');
             } else if (primitive.type == TYPE_PLANE) {
+                primitive.width = +f.getValue('width');
+                primitive.height = +f.getValue('height');
             } else if (primitive.type == TYPE_CYLINDER) {
                 primitive.radius = +f.getValue('radius') || 1;
                 primitive.height = +f.getValue('height') || 1;
@@ -344,28 +370,41 @@ class NodeObjectWindow {
                 primitive.radius = +f.getValue('radius') || 1;
             }
         }
+        this.replaceObjectSuffix();
         this.refreshPreview();
         this.save();
     }
+    replaceObjectSuffix() {
+        let obj = this.object;
+        let spec = this.nodeSpec;
+        let name = obj.name.replace(/:[A-Z_]+$/, '');
+        let suffix = '';
+        if (spec.type == TYPE_CSG && spec.csg.type) {
+            suffix = ':' + spec.csg.type;
+        } else if (spec.type == TYPE_PRIMITIVE && spec.primitive.type) {
+            suffix = ':' + spec.primitive.type;
+        } else if (spec.type != TYPE_DEFAULT) {
+            suffix = ':' + spec.type;
+        }
+        if (name.length + suffix.length < 60) {
+            name += suffix;
+        }
+        if (name != obj.name) {
+            obj.name = name;
+        }
+    }
     refreshPreview() {
-        if (!this.previewPrimitive || this.nodeSpec.type != TYPE_PRIMITIVE) {
-            this.preview.setTarget(null);
-            return;
-        }
-        let primitive = this.nodeSpec.primitive;
-        if (primitive.type == TYPE_CUBE) {
-            this.preview.cube(primitive.size);
-        } else if (primitive.type == TYPE_BOX) {
-            this.preview.box(primitive.width, primitive.height, primitive.depth);
-        } else if (primitive.type == TYPE_PLANE) {
-            this.preview.plane();
-        } else if (primitive.type == TYPE_CYLINDER) {
-            this.preview.cylinder(primitive.radius, primitive.height, 20);
+        if (this.previewPrimitive && this.nodeSpec.type == TYPE_PRIMITIVE) {
+            let primitive = this.nodeSpec.primitive;
+            this.preview.setPrimitive(primitive);
+            this.preview.object.applyTransform(new Matrix4(this.object.globalMatrix));
+            this.preview.setTarget(this.object);
+        } else if (this.previewPrimitive && this.previewCSG && this.nodeSpec.type == TYPE_CSG) {
+            new MeshBuilder(16).build(this.object, this.preview.object)
+            this.preview.setTarget(this.object);
         } else {
-            this.preview.sphere(primitive.radius);
+            this.preview.setTarget(null);
         }
-        this.preview.object.applyTransform(new Matrix4(this.object.globalMatrix));
-        this.preview.setTarget(this.object);
     }
     updatePreview() {
         this.previewPrimitive = !!this.form.getValue('preview');
@@ -453,21 +492,24 @@ class NodeObjectWindow {
             formSpec.items.push({ type: "hframe", items: ["Shape:", { id: "shapeType", type: "combobox", items: PRIMITIVE_TYPES, value: shapeTypeId, onchange: primitiveChanged }] });
             if (primitive.type == TYPE_CUBE) {
                 formSpec.items.push({ type: "hframe", items: ["Size", { id: "size", type: "number", value: primitive.size || 1 }] });
-            }
-            if (primitive.type == TYPE_BOX) {
+            } else if (primitive.type == TYPE_BOX) {
                 formSpec.items.push({
                     type: "hframe", items: [
                         "W", { id: "width", type: "number", value: primitive.width || 1, onchange: primitiveChanged },
                         "H", { id: "height", type: "number", value: primitive.height || 1, onchange: primitiveChanged },
                         "D", { id: "depth", type: "number", value: primitive.depth || 1, onchange: primitiveChanged }]
                 });
-            }
-            if (primitive.type == TYPE_SPHERE) {
+            } else if (primitive.type == TYPE_SPHERE) {
                 formSpec.items.push({ type: "hframe", items: ["Radius", { id: "radius", type: "number", value: primitive.radius || 1, onchange: primitiveChanged }] });
-            }
-            if (primitive.type == TYPE_CYLINDER) {
+            } else if (primitive.type == TYPE_CYLINDER) {
                 formSpec.items.push({ type: "hframe", items: ["Radius", { id: "radius", type: "number", value: primitive.radius || 1, onchange: primitiveChanged }] });
                 formSpec.items.push({ type: "hframe", items: ["Height", { id: "height", type: "number", value: primitive.height || 1, onchange: primitiveChanged }] });
+            } else if (primitive.type == TYPE_PLANE) {
+                formSpec.items.push({
+                    type: "hframe", items: [
+                        "W", { id: "width", type: "number", value: primitive.width || 1, onchange: primitiveChanged },
+                        "H", { id: "height", type: "number", value: primitive.height || 1, onchange: primitiveChanged }]
+                });
             }
             formSpec.items.push({ type: "hframe", items: [{ id: "preview", type: "checkbox", label: "Preview", value: this.previewPrimitive, onchange: () => this.updatePreview() }] });
         } else if (params.type == TYPE_CSG) {
@@ -475,9 +517,10 @@ class NodeObjectWindow {
             formSpec.items.push({ type: "hframe", items: ["CSG:", { id: "csgType", type: "combobox", items: CSG_TYPES, value: csgTypeId, onchange: primitiveChanged }] });
         } else if (params.type == TYPE_OBJREF) {
             let objNames = mqdocument.objects.map(o => o.name);
-            formSpec.items.push({ type: "hframe", items: ["Target:", { id: "refTarget", type: "combobox", items: objNames, value: 0, onchange: primitiveChanged }] });
+            let index = mqdocument.getObjectByName(params.objref.name)?.index ?? 0;
+            formSpec.items.push({ type: "hframe", items: ["Target:", { id: "refTarget", type: "combobox", items: objNames, value: index, onchange: primitiveChanged }] });
         }
-        formSpec.items.push({ type: "button", value: "Build Mesh", onclick: (v) => { new MeshBuilder().build(obj); } });
+        formSpec.items.push({ type: "button", value: "Build Mesh", onclick: (v) => { this.previewPrimitive = false; this.refreshPreview(); new MeshBuilder().build(obj); } });
         formSpec.items.push({
             type: "button", value: "Hide children", onclick: (v) => {
                 obj.visible = true;

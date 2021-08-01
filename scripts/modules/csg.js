@@ -116,24 +116,29 @@ class CSGPrimitive {
 		};
 		return m;
 	}
-	static cube(sz) {
+	static cube(spec) {
 		let g = this.newGenerator();
-		g.cube(sz);
+		g.cube(spec);
 		return new CSGObject(g.polygons);
 	}
-	static box(w, h, d) {
+	static box(spec) {
 		let g = this.newGenerator();
-		g.box(w, h, d);
+		g.box(spec);
 		return new CSGObject(g.polygons);
 	}
-	static cylinder(r, h, s) {
+	static cylinder(spec, s) {
 		let g = this.newGenerator();
-		g.cylinder(r, h, s);
+		g.cylinder(spec, s);
 		return new CSGObject(g.polygons);
 	}
-	static sphere(r, sh, sv) {
+	static sphere(spec, sh, sv) {
 		let g = this.newGenerator();
-		g.sphere(r, sh, sv);
+		g.sphere(spec, sh, sv);
+		return new CSGObject(g.polygons);
+	}
+	static plane(spec) {
+		let g = this.newGenerator();
+		g.plane(spec);
 		return new CSGObject(g.polygons);
 	}
 }

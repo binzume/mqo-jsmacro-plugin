@@ -45,7 +45,7 @@ declare module "mqdocument" {
         wireframe: boolean; // EXPERIMENTAL
         globalMatrix: number[]; // EXPERIMENTAL
         applyTransform(matrix: { applyTo(p: VecXYZ): void }): void; // .core.js
-        getChildren(recursive: boolean): MQObject[]; // .core.js
+        getChildren(recursive?: boolean): MQObject[]; // .core.js
     }
     export interface ObjectList extends Array<MQObject> {
         append(obj: MQObject): number;
