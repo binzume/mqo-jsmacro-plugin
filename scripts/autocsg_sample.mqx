@@ -5,13 +5,17 @@
         <KeyValue>
             <Item key="CSG_OBJCT_0">{"type":"DEFAULT"}</Item>
             <Item key="CSG_OBJCT_1">{"type":"CSG","csg":{"type":"SUB"}}</Item>
+            <Item key="CSG_OBJCT_11">{"type":"PRIMITIVE","primitive":{"type":"CYLINDER","material":0,"radius":0.2,"height":2}}</Item>
+            <Item key="CSG_OBJCT_12">{"type":"CSG","csg":{"type":"AND"}}</Item>
+            <Item key="CSG_OBJCT_13">{"type":"PRIMITIVE","primitive":{"type":"BOX","material":0,"radius":1,"width":2,"height":1.5,"depth":2,"size":1}}</Item>
+            <Item key="CSG_OBJCT_14">{"type":"CSG","csg":{"type":"UNION"}}</Item>
             <Item key="CSG_OBJCT_2">{"type":"DEFAULT","primitive":{"type":"SPHERE","material":0,"radius":1}}</Item>
             <Item key="CSG_OBJCT_3">{"type":"PRIMITIVE","primitive":{"type":"CYLINDER","material":0,"radius":1,"height":2,"size":1,"width":1,"depth":1}}</Item>
             <Item key="CSG_OBJCT_4">{"type":"CSG","primitive":{"type":"CUBE","material":0,"radius":1,"width":1,"height":1,"depth":1,"size":1},"csg":{"type":"SUB"}}</Item>
             <Item key="CSG_OBJCT_5">{"type":"PRIMITIVE","csg":{"type":"SUB"},"primitive":{"type":"SPHERE","material":1,"radius":1}}</Item>
             <Item key="CSG_OBJCT_6">{"type":"PRIMITIVE","csg":{"type":"SUB"},"primitive":{"type":"CYLINDER","material":1,"radius":0.5,"width":1,"height":1,"depth":1,"size":1}}</Item>
             <Item key="CSG_OBJCT_7">{"type":"PRIMITIVE","primitive":{"material":0,"radius":0.8,"type":"CYLINDER","size":1,"height":2}}</Item>
-            <Item key="CSG_OBJCT_8">{"type":"CSG","csg":{"type":"UNION"}}</Item>
+            <Item key="CSG_OBJCT_8">{"type":"CSG","csg":{"type":"SUB"}}</Item>
             <Item key="CSG_OBJCT_9">{"type":"DEFAULT"}</Item>
         </KeyValue>
     </Plugin.7A6E6962.7A6E6963>
