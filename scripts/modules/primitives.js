@@ -4,11 +4,15 @@ export class PrimitiveModeler {
         this.object = object || { verts: [] };
         this.material = material || 0;
         this.vertices = this.object.verts;
+        this.transform = null;
     }
     addFace(points) {
         return this.object.faces.append(points, this.material);
     }
     addVertex(x, y, z) {
+        if (this.transform) {
+            return this.vertices.append(this.transform.applyTo({ x: x, y: y, z: z }));
+        }
         return this.vertices.append(x, y, z);
     }
     /**
@@ -95,6 +99,49 @@ export class PrimitiveModeler {
         this.addFace(bottom.reverse());
     }
     /**
+     * @param {{radius?:number}} spec
+     */
+    tetrahedron(spec = {}) {
+        let r = spec.radius ?? 1;
+        let ofs = this.vertices.length;
+        let x = Math.sqrt(2 / 3) * r, y = - 1 / 3 * r, z = Math.sqrt(1 - 1 / 9) * r;
+        [
+            [0, r, 0],
+            [0, y, z],
+            [-x, y, -z / 2],
+            [x, y, -z / 2],
+        ].forEach(v => this.addVertex(v[0], v[1], v[2]));
+        [
+            [0, 1, 2], [0, 2, 3], [0, 3, 1], [3, 2, 1],
+        ].forEach(f => this.addFace(f.map(p => p + ofs)));
+    }
+    /**
+     * @param {{radius?:number}} spec
+     */
+    hexahedron(spec = {}) {
+        let r = spec.radius ?? 1;
+        this.cube({ size: r * 2 / Math.sqrt(3) });
+    }
+    /**
+     * @param {{radius?:number}} spec
+     */
+    octahedron(spec = {}) {
+        let r = spec.radius ?? 1;
+        let ofs = this.vertices.length;
+        [
+            [0, r, 0],
+            [r, 0, 0],
+            [0, 0, r],
+            [-r, 0, 0],
+            [0, 0, -r],
+            [0, -r, 0],
+        ].forEach(v => this.addVertex(v[0], v[1], v[2]));
+        [
+            [0, 1, 2], [0, 2, 3], [0, 3, 4], [0, 4, 1],
+            [5, 2, 1], [5, 3, 2], [5, 4, 3], [5, 1, 4],
+        ].forEach(f => this.addFace(f.map(p => p + ofs)));
+    }
+    /**
      * @param {{width?:number, height?:number}} spec 
      */
     plane(spec = {}) {
@@ -105,7 +152,7 @@ export class PrimitiveModeler {
             [w / 2, 0, -h / 2],
             [w / 2, 0, h / 2],
             [-w / 2, 0, h / 2],
-        ].forEach(v => this.addVertex(v));
+        ].forEach(v => this.addVertex(v[0], v[1], v[2]));
         this.addFace([st, st + 1, st + 2, st + 3]);
     }
 }

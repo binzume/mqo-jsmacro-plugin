@@ -204,8 +204,9 @@ declare module "geom" {
         length(): number;
         clone(): Vector3;
         toString(): string;
-        static fromAxisAngle(v: Vector3, rad: number): Quaternion;
+        static fromAxisAngle(v: VecXYZ, rad: number): Quaternion;
         static fromAngle(x: number, y: number, z: number): Quaternion;
+        static fromVectors(v: Vector3, v: Vector3): Quaternion;
     }
     export class Matrix4 {
         constructor(mat: number[]);
@@ -216,6 +217,7 @@ declare module "geom" {
         static scaleMatrix(x: number, y: number, z: number): Matrix4;
         static translateMatrix(x: number, y: number, z: number): Matrix4;
         static rotateMatrix(x: number, y: number, z: number, rad: number): Matrix4;
+        static fromQuaternion(q: VecXYZW): Matrix4;
     }
     export class Plane {
         constructor(normal: Vector3, w: number);

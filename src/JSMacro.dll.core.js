@@ -25,6 +25,7 @@ class Vector3 {
 			this.x * v.y - this.y * v.x);
 	}
 	length() { return Math.sqrt(this.x * this.x + this.y * this.y + this.z * this.z); }
+	lengthSqr() { return this.x * this.x + this.y * this.y + this.z * this.z; }
 	distanceTo(v) { return Math.sqrt(this.distanceToSqr(v)); }
 	distanceToSqr(v) {
 		let dx = this.x - v.x, dy = this.y - v.y, dz = this.z - v.z;
@@ -53,6 +54,7 @@ class Quaternion {
 		} else {
 			this.w = 1;
 		}
+		return this;
 	}
 	applyTo(v) {
 		let vx = v.x, vy = v.y, vz = v.z;
@@ -82,6 +84,23 @@ class Quaternion {
 		return new Quaternion(
 			v.x * s, v.y * s, v.z * s, Math.cos(rad / 2)
 		);
+	}
+	static fromAngle(x, y, z) {
+		// TODO: MQAngle is always XYZ order?
+		let cx = Math.cos(x / 2), cy = Math.cos(y / 2), cz = Math.cos(z / 2);
+		let sx = Math.sin(x / 2), sy = Math.sin(y / 2), sz = Math.sin(z / 2);
+		return new Quaternion(
+			sx * cy * cz + cx * sy * sz,
+			cx * sy * cz - sx * cy * sz,
+			cx * cy * sz + sx * sy * cz,
+			cx * cy * cz - sx * sy * sz,
+		);
+	}
+	static fromVectors(from, to) {
+		let v = from.cross(to);
+		let w = Math.sqrt(from.lengthSqr() * to.lengthSqr()) + from.dot(to);
+		// TODO: w == 0?
+		return new Quaternion(v.x, v.y, v.z, w).normalize();
 	}
 }
 
@@ -127,6 +146,15 @@ class Matrix4 {
 			0, 0, 0, 1
 		]);
 	}
+	static fromQuaternion(q) {
+		let x = q.x, y = q.y, z = q.z, w = q.w;
+		return new Matrix4([
+			1 - 2 * y * y - 2 * z * z, 2 * x * y - 2 * z * w, 2 * x * z + 2 * y * w, 0,
+			2 * x * y + 2 * z * w, 1 - 2 * x * x - 2 * z * z, 2 * y * z - 2 * x * w, 0,
+			2 * x * z - 2 * y * w, 2 * y * z + 2 * x * w, 1 - 2 * x * x - 2 * y * y, 0,
+			0, 0, 0, 1
+		]);
+	}
 	static multiply(m1, m2, result) {
 		let a = m1.m, b = m2.m, r = result.m;
 		r[0] = a[0] * b[0] + a[1] * b[4] + a[2] * b[8] + a[3] * b[12];
@@ -169,6 +197,11 @@ process.defineModule('geom', [
 	{ name: 'Quaternion', value: Quaternion },
 	{ name: 'Matrix4', value: Matrix4 },
 	{ name: 'Plane', value: Plane },
+]);
+
+process.defineModule('mqdocument', [
+	{ name: 'MQObject', value: MQObject },
+	{ name: 'MQMaterial', value: MQMaterial },
 ]);
 
 // dialog TODO
