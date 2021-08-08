@@ -331,16 +331,28 @@ JSValue NewObjectTransform(JSContext* ctx, MQObject o) {
 //---------------------------------------------------------------------------------------------------------------------
 // MQObject
 //---------------------------------------------------------------------------------------------------------------------
-JSValue NewMQObject(JSContext* ctx, MQObject o, int index);
+JSValue NewMQObject(JSContext* ctx, MQObject o, MQDocument doc = nullptr,
+                    int index = -1, bool drawingObject = false);
 
 class MQObjectWrapper : public JSClassBase<MQObjectWrapper> {
  public:
-  int index;
   MQObject obj;
-  MQObjectWrapper(MQObject obj, int index) : index(index), obj(obj) {}
-  MQObjectWrapper() : index(-1), obj(MQ_CreateObject()) {}
+  MQDocument doc = nullptr;
+  int index = -1;
+  bool isDrawingObject = false;
+  MQObjectWrapper(MQObject obj, MQDocument _doc, int index,
+                  bool drawingObject = false)
+      : obj(obj), doc(_doc), index(index), isDrawingObject(drawingObject) {}
+  MQObjectWrapper() : obj(MQ_CreateObject()) {}
   ~MQObjectWrapper() {
-    if (index < 0) {
+    if (isDrawingObject) {
+      auto plugin = dynamic_cast<MQStationPlugin*>(GetPluginClass());
+      if (doc && plugin) {
+        plugin->DeleteDrawingObject(doc, obj);
+      } else {
+        debug_log("cannot delete drawingObject", 2);
+      }
+    } else if (index < 0) {
       obj->DeleteThis();
     }
   }
@@ -358,6 +370,8 @@ class MQObjectWrapper : public JSClassBase<MQObjectWrapper> {
   void Reset() {
     obj = MQ_CreateObject();
     index = -1;
+    doc = nullptr;
+    isDrawingObject = false;
   }
 
   static const JSCFunctionListEntry proto_funcs[];
@@ -414,9 +428,7 @@ class MQObjectWrapper : public JSClassBase<MQObjectWrapper> {
     }
     obj->Merge(o->obj);
   }
-  JSValue Clone(JSContext* ctx) {
-    return NewMQObject(ctx, obj->Clone(), -1);
-  }
+  JSValue Clone(JSContext* ctx) { return NewMQObject(ctx, obj->Clone()); }
   void OptimizeVertex(float distance) {
     obj->OptimizeVertex(distance, nullptr);
   }
@@ -442,10 +454,11 @@ const JSCFunctionListEntry MQObjectWrapper::proto_funcs[] = {
     function_entry_getset<&GetWireframe, &SetWireframe>("wireframe"),
 };
 
-JSValue NewMQObject(JSContext* ctx, MQObject o, int index) {
+JSValue NewMQObject(JSContext* ctx, MQObject o, MQDocument doc, int index,
+                    bool drawingObject) {
   JSValue obj = JS_NewObjectClass(ctx, MQObjectWrapper::class_id);
   if (JS_IsException(obj)) return obj;
-  MQObjectWrapper* p = new MQObjectWrapper(o, index);
+  MQObjectWrapper* p = new MQObjectWrapper(o, doc, index, drawingObject);
   JS_SetOpaque(obj, p);
   p->Init(ctx, obj, 0, nullptr);
   return obj;
@@ -455,19 +468,29 @@ JSValue NewMQObject(JSContext* ctx, MQObject o, int index) {
 // MQMaterial
 //---------------------------------------------------------------------------------------------------------------------
 
-class MQMaterialWrapper {
+class MQMaterialWrapper : public JSClassBase<MQMaterialWrapper> {
  public:
-  int index;
   MQMaterial mat;
-  MQMaterialWrapper(MQMaterial mat, int index) : index(index), mat(mat) {}
-  MQMaterialWrapper() : index(-1), mat(MQ_CreateMaterial()) {}
+  MQDocument doc = nullptr;
+  int index = -1;
+  bool isDrawingMaterial = false;
+  MQMaterialWrapper(MQMaterial mat, MQDocument _doc, int index,
+                    bool drawingMaterial)
+      : index(index), mat(mat), doc(_doc), isDrawingMaterial(drawingMaterial) {}
+  MQMaterialWrapper() : mat(MQ_CreateMaterial()) {}
   ~MQMaterialWrapper() {
-    if (index < 0) {
+    if (isDrawingMaterial) {
+      auto plugin = dynamic_cast<MQStationPlugin*>(GetPluginClass());
+      if (mat && plugin) {
+        plugin->DeleteDrawingMaterial(doc, mat);
+      } else {
+        debug_log("cannot delete drawingMaterial", 2);
+      }
+    } else if (index < 0) {
       mat->DeleteThis();
     }
   }
 
-  static JSClassID class_id;
   static const JSCFunctionListEntry proto_funcs[];
 
   void Init(JSContext* ctx, JSValueConst this_obj, int argc,
@@ -480,6 +503,8 @@ class MQMaterialWrapper {
   void Reset() {
     mat = MQ_CreateMaterial();
     index = -1;
+    doc = nullptr;
+    isDrawingMaterial = false;
   }
 
   int GetIndex(JSContext* ctx) { return index; }
@@ -576,8 +601,6 @@ class MQMaterialWrapper {
   }
 };
 
-JSClassID MQMaterialWrapper::class_id;
-
 const JSCFunctionListEntry MQMaterialWrapper::proto_funcs[] = {
     function_entry_getset<&GetIndex>("index"),
     function_entry_getset<&GetId>("id"),
@@ -600,10 +623,12 @@ const JSCFunctionListEntry MQMaterialWrapper::proto_funcs[] = {
     function_entry_getset<&GetShader, &SetShader>("shaderType"),
 };
 
-JSValue NewMQMaterial(JSContext* ctx, MQMaterial mat, int index) {
+JSValue NewMQMaterial(JSContext* ctx, MQMaterial mat, MQDocument doc = nullptr,
+                      int index = -1, bool drawingMaterial = false) {
   JSValue obj = JS_NewObjectClass(ctx, MQMaterialWrapper::class_id);
   if (JS_IsException(obj)) return obj;
-  MQMaterialWrapper* p = new MQMaterialWrapper(mat, index);
+  MQMaterialWrapper* p =
+      new MQMaterialWrapper(mat, doc, index, drawingMaterial);
   JS_SetOpaque(obj, p);
   p->Init(ctx, obj, 0, nullptr);
   return obj;
@@ -689,7 +714,7 @@ class MQDocumentWrapper {
       : doc(doc) {
     pluginKeyValue = keyValue;
   }
-  MQDocumentWrapper() {}
+  MQDocumentWrapper() : doc(nullptr), pluginKeyValue(nullptr) {}
 
   void Compact() { doc->Compact(); }
   int GetCurrentObjectIndex() { return doc->GetCurrentObjectIndex(); }
@@ -729,10 +754,10 @@ class MQDocumentWrapper {
         JSValue obj = objectCache[o->GetUniqueID()].GetValue();
         auto ow = MQObjectWrapper::Unwrap(obj);
         if (ow && ow->obj == o) {
-          ow->index = i; // update object index
+          ow->index = i;  // update object index
         } else {
           JS_FreeValue(ctx, obj);
-          obj = NewMQObject(ctx, o, i);
+          obj = NewMQObject(ctx, o, doc, i);
           objectCache.Set(o->GetUniqueID(), JS_DupValue(ctx, obj));
         }
         ret.Set(i, obj);
@@ -750,12 +775,12 @@ class MQDocumentWrapper {
     return ret.GetValue();
   }
 
-  JSValue AddObject(JSContext* ctx, JSValue obj) {
-    MQObjectWrapper* o = MQObjectWrapper::Unwrap(obj);
-    if (o == nullptr) {
+  JSValue AddObject(JSContext* ctx, MQObjectWrapper* o) {
+    if (o == nullptr || o->isDrawingObject) {
       return JS_EXCEPTION;
     }
     o->index = doc->AddObject(o->obj);
+    o->doc = doc;
     return to_jsvalue(ctx, o->index);
   }
 
@@ -764,7 +789,7 @@ class MQDocumentWrapper {
       doc->DeleteObject(convert_jsvalue<int>(ctx, obj));
       return JS_UNDEFINED;
     }
-    MQObjectWrapper* o = MQObjectWrapper::Unwrap(obj);
+    MQObjectWrapper* o = MQObjectWrapper::Unwrap(ctx, obj);
     if (o == nullptr) {
       return JS_EXCEPTION;
     }
@@ -779,7 +804,7 @@ class MQDocumentWrapper {
     for (int i = 0; i < doc->GetMaterialCount(); i++) {
       auto o = doc->GetMaterial(i);
       if (o != nullptr) {
-        ret.SetFree(i, NewMQMaterial(ctx, o, i));
+        ret.SetFree(i, NewMQMaterial(ctx, o, doc, i));
       }
     }
     JSValue data[]{this_val};
@@ -794,10 +819,8 @@ class MQDocumentWrapper {
     return ret.GetValue();
   }
 
-  JSValue AddMaterial(JSContext* ctx, JSValue obj) {
-    MQMaterialWrapper* o = (MQMaterialWrapper*)JS_GetOpaque2(
-        ctx, obj, MQMaterialWrapper::class_id);
-    if (o == nullptr) {
+  JSValue AddMaterial(JSContext* ctx, MQMaterialWrapper* o) {
+    if (o == nullptr || o->isDrawingMaterial) {
       return JS_EXCEPTION;
     }
     o->index = doc->AddMaterial(o->mat);
@@ -809,8 +832,7 @@ class MQDocumentWrapper {
       doc->DeleteMaterial(convert_jsvalue<int>(ctx, obj));
       return JS_UNDEFINED;
     }
-    MQMaterialWrapper* o = (MQMaterialWrapper*)JS_GetOpaque2(
-        ctx, obj, MQMaterialWrapper::class_id);
+    MQMaterialWrapper* o = MQMaterialWrapper::Unwrap(ctx, obj);
     if (o == nullptr) {
       return JS_EXCEPTION;
     }
@@ -834,8 +856,7 @@ class MQDocumentWrapper {
     }
   }
 
-  JSValue GetGlobalMatrix(JSContext* ctx, JSValue obj) {
-    MQObjectWrapper* o = MQObjectWrapper::Unwrap(obj);
+  JSValue GetGlobalMatrix(JSContext* ctx, MQObjectWrapper* o) {
     if (!o) {
       return JS_EXCEPTION;
     }
@@ -866,9 +887,47 @@ class MQDocumentWrapper {
     }
     return unwrap(std::move(result));
   }
+
+  JSValue CreateDrawingObject(JSContext* ctx, JSValue arg) {
+    auto plugin = dynamic_cast<MQStationPlugin*>(GetPluginClass());
+    if (!plugin) {
+      return JS_EXCEPTION;
+    }
+    MQObject obj = plugin->CreateDrawingObject(
+        doc, MQStationPlugin::DRAW_OBJECT_LINE, FALSE);
+    return NewMQObject(ctx, obj, doc, -1, true);
+  }
+
+  JSValue CreateDrawingMaterial(JSContext* ctx, JSValue arg) {
+    auto plugin = dynamic_cast<MQStationPlugin*>(GetPluginClass());
+    if (!plugin) {
+      return JS_EXCEPTION;
+    }
+    int index = -1;
+    MQMaterial mat = plugin->CreateDrawingMaterial(doc, index, FALSE);
+    return NewMQMaterial(ctx, mat, doc, index, true);
+  }
 };
 
 JSClassID MQDocumentWrapper::class_id;
+
+static JSValue SetDrawProxyObject(JSContext* ctx, JSValue obj, JSValue proxy,
+                                  bool sync_select) {
+  MQBasePlugin* plugin = GetPluginClass();
+  if (!plugin) {
+    return JS_EXCEPTION;
+  }
+  MQObjectWrapper* mqobj = MQObjectWrapper::Unwrap(obj);
+  MQObjectWrapper* mqobjproxy = MQObjectWrapper::Unwrap(proxy);
+  if (!mqobj) {
+    return JS_EXCEPTION;
+  }
+
+  plugin->SetDrawProxyObject(mqobj->obj, mqobjproxy ? mqobjproxy->obj : nullptr,
+                             sync_select);
+  JS_SetPropertyStr(ctx, obj, "_drawProxyObject", JS_DupValue(ctx, proxy));
+  return JS_UNDEFINED;
+}
 
 const JSCFunctionListEntry MQDocumentWrapper::proto_funcs[] = {
     function_entry_getset<&GetObjects>("objects"),
@@ -888,6 +947,9 @@ const JSCFunctionListEntry MQDocumentWrapper::proto_funcs[] = {
     function_entry<&GetGlobalMatrix>("getGlobalMatrix"),
     function_entry<&GetPluginData>("getPluginData"),
     function_entry<&SetPluginData>("setPluginData"),
+    function_entry<&CreateDrawingObject>("createDrawingObject"),
+    function_entry<&CreateDrawingMaterial>("createDrawingMaterial"),
+    function_entry("setDrawProxyObject", 3, method_wrapper<SetDrawProxyObject>),
 };
 
 static int DocumentModuleInit(JSContext* ctx, JSModuleDef* m) {
@@ -898,33 +960,11 @@ static int DocumentModuleInit(JSContext* ctx, JSModuleDef* m) {
   return 0;
 }
 
-JSValue SetDrawProxyObject(JSContext* ctx, JSValue obj, JSValue proxy,
-                           bool sync_select) {
-  MQBasePlugin* plugin = GetPluginClass();
-  if (!plugin) {
-    return JS_EXCEPTION;
-  }
-  MQObjectWrapper* mqobj = MQObjectWrapper::Unwrap(obj);
-  MQObjectWrapper* mqobjproxy = MQObjectWrapper::Unwrap(proxy);
-  if (!mqobj) {
-    return JS_EXCEPTION;
-  }
-
-  plugin->SetDrawProxyObject(mqobj->obj, mqobjproxy ? mqobjproxy->obj : nullptr,
-                             sync_select);
-  JS_SetPropertyStr(ctx, obj, "_drawProxyObject", JS_DupValue(ctx, proxy));
-  return JS_UNDEFINED;
-}
-
 JSValue NewMQDocument(JSContext* ctx, MQDocumentWrapper* doc) {
   JSValue obj = JS_NewObjectClass(ctx, MQDocumentWrapper::class_id);
   if (JS_IsException(obj)) return obj;
   doc->self = obj;
   JS_SetOpaque(obj, doc);
-
-  JS_SetPropertyStr(ctx, obj, "setDrawProxyObject",
-                    JS_NewCFunction(ctx, method_wrapper<SetDrawProxyObject>,
-                                    "setDrawProxyObject", 3));
   return obj;
 }
 
@@ -943,12 +983,11 @@ void InstallMQDocument(JSContext* ctx, MQDocument doc,
   JS_FreeValue(ctx, arrayObj);
 
   ValueHolder global(ctx, JS_GetGlobalObject(ctx));
-  global.SetFree("MQObject",
-                 newClassConstructor<MQObjectWrapper>(ctx, "MQObject"));
-  global.SetFree("MQMaterial",
-                 newClassConstructor<MQMaterialWrapper>(ctx, "MQMaterial"));
-  global.SetFree("MQDocument",
-                 newClassConstructor<MQDocumentWrapper>(ctx, "MQDocument"));
+  global.Set("MQObject", newClassConstructor<MQObjectWrapper>(ctx, "MQObject"));
+  global.Set("MQMaterial",
+             newClassConstructor<MQMaterialWrapper>(ctx, "MQMaterial"));
+  global.Set("MQDocument",
+             newClassConstructor<MQDocumentWrapper>(ctx, "MQDocument"));
   global.Set("mqdocument",
              NewMQDocument(ctx, new MQDocumentWrapper(doc, keyValue)));
 }

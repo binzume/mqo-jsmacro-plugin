@@ -447,6 +447,9 @@ class JSClassBase {
  public:
   static JSClassID class_id;
   static T* Unwrap(JSValueConst v) { return (T*)JS_GetOpaque(v, class_id); }
+  static T* Unwrap(JSContext* ctx, JSValueConst v) {
+    return (T*)JS_GetOpaque2(ctx, v, class_id);
+  }
 
   static JSValue NewClassProto(JSContext* ctx, const char* className,
                                JSClassExoticMethods* exotic = nullptr) {
@@ -456,6 +459,12 @@ class JSClassBase {
 
 template <typename T>
 JSClassID JSClassBase<T>::class_id = 0;
+
+template <typename R, typename T = std::remove_pointer<R>::type>
+requires std::derived_from<T, JSClassBase<T>> static inline R convert_jsvalue(
+    JSContext* ctx, JSValue v) {
+  return T::Unwrap(ctx, v);
+}
 
 template <typename T>
 inline JSValue NewClassProto(JSContext* ctx, const char* name,
