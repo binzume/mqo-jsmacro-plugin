@@ -20,7 +20,7 @@
 #include "Utils.h"
 #include "preference.h"
 
-#define PLUGIN_VERSION "v0.2.0"
+#define PLUGIN_VERSION "v0.3.1"
 #define PRODUCT_ID 0x7a6e6962
 #define PLUGIN_ID 0x7a6e6963
 
