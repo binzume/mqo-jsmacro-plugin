@@ -32,6 +32,7 @@ JSModuleDef *InitChildProcessModule(JSContext *ctx);
 JSModuleDef *InitBSPTreeModule(JSContext *ctx);
 void InstallMQDocument(JSContext *ctx, MQDocument doc,
                        std::map<std::string, std::string> *keyValue = nullptr);
+void CloseAllWindow(JSContext *ctx);
 
 //---------------------------------------------------------------------------------------------------------------------
 //  DllMain
@@ -223,6 +224,7 @@ class JSMacroPlugin : public MQStationPlugin {
 
   void DisposeJsContext() {
     if (jsContext) {
+      CloseAllWindow(jsContext->ctx);
       EmitEvent("_dispose");
       delete jsContext;
       jsContext = nullptr;

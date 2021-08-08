@@ -2,6 +2,7 @@
 #include <windows.h>
 
 #include <sstream>
+#include <unordered_set>
 #include <vector>
 
 #include "MQWidget.h"
@@ -191,6 +192,8 @@ class WidgetBuilder {
   }
 };
 
+static std::unordered_set<class JSFormWindow*> forms;
+
 class JSFormWindow : public MQWindow, public JSClassBase<JSFormWindow> {
   std::vector<ItemBinder> binders;
   MQWidgetBase* rootFrame;
@@ -203,6 +206,7 @@ class JSFormWindow : public MQWindow, public JSClassBase<JSFormWindow> {
       : MQWindow(parent), rootFrame(nullptr) {
     SetContent(ctx, formsSpec);
   }
+  ~JSFormWindow() { forms.erase(this); }
 
   void SetContent(JSContext* ctx, JSValueConst formsSpec) {
     Clear();
@@ -220,6 +224,7 @@ class JSFormWindow : public MQWindow, public JSClassBase<JSFormWindow> {
         b.onchanged(this, &JSFormWindow::OnChange);
       }
     }
+    forms.insert(this);
     SetVisible(true);
   }
 
@@ -260,6 +265,7 @@ class JSFormWindow : public MQWindow, public JSClassBase<JSFormWindow> {
   void Close() {
     SetVisible(false);
     Clear();
+    forms.erase(this);
   }
 
   BOOL OnClick(MQWidgetBase* sender, MQDocument doc) {
@@ -493,6 +499,14 @@ static int DialogModuleInit(JSContext* ctx, JSModuleDef* m) {
 
   return JS_SetModuleExportList(ctx, m, dialog_funcs,
                                 (int)std::size(dialog_funcs));
+}
+
+void CloseAllWindow(JSContext* ctx) {
+  for (auto f : forms) {
+    f->SetVisible(false);
+    f->Clear();
+  }
+  forms.clear();
 }
 
 JSModuleDef* InitMQWidgetModule(JSContext* ctx) {
