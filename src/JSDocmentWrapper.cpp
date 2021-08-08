@@ -775,16 +775,20 @@ class MQDocumentWrapper {
     return ret.GetValue();
   }
 
-  JSValue AddObject(JSContext* ctx, MQObjectWrapper* o) {
+  JSValue AddObject(JSContext* ctx, JSValueConst this_val, int argc,
+                    JSValueConst* argv, MQObjectWrapper* o) {
     if (o == nullptr || o->isDrawingObject) {
       return JS_EXCEPTION;
     }
     o->index = doc->AddObject(o->obj);
     o->doc = doc;
+    ValueHolder objectCache = GetObjcetCache(ctx, this_val);
+    objectCache.Set(o->GetId(), JS_DupValue(ctx, argv[0]));
     return to_jsvalue(ctx, o->index);
   }
 
-  JSValue RemoveObject(JSContext* ctx, JSValue obj) {
+  JSValue RemoveObject(JSContext* ctx, JSValueConst this_val, int argc,
+                       JSValueConst* argv, JSValue obj) {
     if (JS_IsNumber(obj)) {
       doc->DeleteObject(convert_jsvalue<int>(ctx, obj));
       return JS_UNDEFINED;
@@ -793,6 +797,8 @@ class MQDocumentWrapper {
     if (o == nullptr) {
       return JS_EXCEPTION;
     }
+    ValueHolder objectCache = GetObjcetCache(ctx, this_val);
+    objectCache.Delete(o->GetId());
     doc->DeleteObject(o->index);
     o->Reset();
     return JS_UNDEFINED;
