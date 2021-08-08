@@ -64,6 +64,7 @@ test("MQObject", (t) => {
 		let idx = mqdocument.objects.append(obj);
 		assert.assert(obj.id != 0, "id is set.");
 		assert.equals(idx, obj.index);
+		assert.equals(obj, mqdocument.objects[idx], "get object");
 		assert.equals(idx, mqdocument.objects.append(obj), "appendx2 (?)");
 		mqdocument.objects.remove(obj);
 		assert.equals(0, obj.id, "id is not set.");
@@ -79,9 +80,9 @@ test("MQObject", (t) => {
 	{
 		// Error
 		// @ts-ignore
-		assert.throws(TypeError, () => { mqdocument.objects.remove(new MQMaterial()) });
+		assert.throws(TypeError, () => { mqdocument.objects.remove(new MQMaterial()) }, "not a MQObject");
 		// @ts-ignore
-		assert.throws(TypeError, () => { mqdocument.objects.remove({}) });
+		assert.throws(TypeError, () => { mqdocument.objects.remove({}) }, "not a MQObject 2");
 		// @ts-ignore
 		assert.throws(TypeError, () => { mqdocument.objects.remove("hoge") });
 		// @ts-ignore

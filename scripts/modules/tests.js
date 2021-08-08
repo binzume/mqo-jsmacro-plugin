@@ -31,7 +31,7 @@ const testState = {
     count: 0,
     success: 0,
     onFailed(t, e) {
-        console.log("failed. assert:" + assert.count + " " + e);
+        console.error("failed. assert:" + assert.count + " " + e);
     },
     onSuccess(t) {
         if (assert.count) {

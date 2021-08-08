@@ -172,17 +172,74 @@ function overwrap(a1, a2, b1, b2) {
 	return false;
 }
 
+
+/**
+ * @param {Vector3} p 
+ * @param {Vector3} a 
+ * @param {Vector3} b 
+ * @param {Vector3} c 
+ */
+function insideTriangle(p, a, b, c) {
+	const ab = b.minus(a), bc = c.minus(b), ca = a.minus(c);
+	const c1 = ab.cross(p.minus(a)), c2 = bc.cross(p.minus(b)), c3 = ca.cross(p.minus(c));
+	return c1.dot(c2) > 0 && c2.dot(c3) > 0 && c3.dot(c1) > 0;
+}
+
+/**
+ * @param {Vector3[]} vv 
+ */
 function cleanEdge(vv) {
+	const threshold = CSGObject.EPSILON * CSGObject.EPSILON * 100;
 	do {
-		var f = false;
+		var update = false;
 		for (let k = 0; k < vv.length; k++) {
 			let d = (k + 1) % vv.length;
 			if (collinear(vv[k], vv[d], vv[(k + 2) % vv.length])) {
 				vv.splice(d, 1);
-				f = true;
+				update = true;
 			}
 		}
-	} while (f);
+	} while (update);
+	do {
+		var update = false;
+		if (vv.length > 5) {
+			for (let i = 0; i < vv.length; i++) {
+				let iv0 = vv[(i + vv.length - 1) % vv.length];
+				let iv1 = vv[i];
+				let iv2 = vv[(i + 1) % vv.length];
+				for (let j = 0; j < vv.length; j++) {
+					if (i == j) {
+						continue;
+					}
+					let jv0 = vv[(j + 1) % vv.length];
+					let jv1 = vv[j];
+					let jv2 = vv[(j + vv.length - 1) % vv.length];
+					if (iv0.distanceToSqr(jv0) < threshold && iv1.distanceToSqr(jv1) < threshold && iv2.distanceToSqr(jv2) < threshold) {
+						let ok = true;
+						for (let k = i + 2; k < i + vv.length - 1; k++) {
+							if (insideTriangle(vv[k % vv.length], iv0, iv1, iv2)) {
+								ok = false;
+								break;
+							}
+						}
+						if (!ok) {
+							continue;
+						}
+						if (i < j) {
+							vv.splice(j, 1);
+							vv.splice(i, 1);
+						} else {
+							vv.splice(j, 1);
+							vv.splice(i, 1);
+						}
+						update = true;
+						i = vv.length;
+						break;
+					}
+				}
+			}
+		}
+	} while (update);
 	return vv;
 }
 
@@ -207,7 +264,11 @@ function tryMerge(p1, p2) {
 	return null;
 }
 
+/**
+ * @param {Polygon[]} polygons 
+ */
 function mergePolygons(polygons) {
+	/** @type {Polygon[]} */
 	var mpolygons = [];
 	var byface = new Map();
 	polygons.forEach((p) => {
@@ -244,7 +305,7 @@ function mergePolygons(polygons) {
 	byface.forEach((fs) => {
 		mpolygons = mpolygons.concat(fs);
 	});
-	console.log(["merged", polygons.length, mpolygons.length]);
+	console.log("merged" + polygons.length + " -> " + mpolygons.length);
 	return mpolygons;
 }
 

@@ -19,6 +19,8 @@ declare module "mqdocument" {
         getPluginData(key: string): string; // EXPERIMENTAL
         setPluginData(key: string, value: string): void; // EXPERIMENTAL
         setDrawProxyObject(obj: MQObject, proxy: MQObject); // EXPERIMENTAL
+        createDrawingObject() : MQObject; // EXPERIMENTAL
+        createDrawingMaterial() : MQMaterial; // EXPERIMENTAL
         getGlobalMatrix(obj: MQObject): number[]; // internal use.
         getObjectByName(name: string): MQObject | null; // .core.js
         addEventListener(event: string, lisntener: (e: any) => void); // .core.js

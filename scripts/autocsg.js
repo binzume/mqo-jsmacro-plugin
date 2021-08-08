@@ -229,20 +229,17 @@ class CSGEval {
 
 class PreviewObject {
     constructor() {
-        /** @type {MQObject} */
-        this.object = new MQObject();
+        this.object = mqdocument.createDrawingObject();
         this.object.wireframe = true;
+        /** @type {MQObject} */
         this.target = null;
         this.material = 0;
     }
     setTarget(obj) {
-        if (this.target) {
-            mqdocument.setDrawProxyObject(this.target, null);
+        if (!obj) {
+            this.clear();
         }
         this.target = obj;
-        if (this.target) {
-            mqdocument.setDrawProxyObject(this.target, this.object);
-        }
     }
     setPrimitive(primitive) {
         let ctx = this._newPrimitive();
@@ -511,7 +508,6 @@ class NodeObjectWindow {
                         "H", { id: "height", type: "number", value: primitive.height || 1, onchange: primitiveChanged }]
                 });
             }
-            formSpec.items.push({ type: "hframe", items: [{ id: "preview", type: "checkbox", label: "Preview", value: this.previewPrimitive, onchange: () => this.updatePreview() }] });
         } else if (params.type == TYPE_CSG) {
             let csgTypeId = Math.max(CSG_TYPES.indexOf(params.csg.type), 0);
             formSpec.items.push({ type: "hframe", items: ["CSG:", { id: "csgType", type: "combobox", items: CSG_TYPES, value: csgTypeId, onchange: primitiveChanged }] });
@@ -520,7 +516,10 @@ class NodeObjectWindow {
             let index = mqdocument.getObjectByName(params.objref.name)?.index ?? 0;
             formSpec.items.push({ type: "hframe", items: ["Target:", { id: "refTarget", type: "combobox", items: objNames, value: index, onchange: primitiveChanged }] });
         }
-        formSpec.items.push({ type: "button", value: "Build Mesh", onclick: (v) => { this.previewPrimitive = false; this.refreshPreview(); new MeshBuilder().build(obj); } });
+        if (params.type == TYPE_PRIMITIVE || this.previewCSG) {
+            formSpec.items.push({ type: "hframe", items: [{ id: "preview", type: "checkbox", label: "Preview", value: this.previewPrimitive, onchange: () => this.updatePreview() }] });
+        }
+        formSpec.items.push({ type: "button", value: "Build Mesh", onclick: (v) => { new MeshBuilder().build(obj); } });
         formSpec.items.push({
             type: "button", value: "Hide children", onclick: (v) => {
                 obj.visible = true;
