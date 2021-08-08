@@ -3,6 +3,7 @@ interface VecXYZ { x: number, y: number, z: number }
 interface VecXYZW { x: number, y: number, z: number, w: number }
 
 declare module "mqdocument" {
+    type Vec3 = import("geom").Vector3; // VecXYZ;
     export interface MQDocument {
         objects: ObjectList;
         materials: MaterialList;
@@ -19,8 +20,8 @@ declare module "mqdocument" {
         getPluginData(key: string): string; // EXPERIMENTAL
         setPluginData(key: string, value: string): void; // EXPERIMENTAL
         setDrawProxyObject(obj: MQObject, proxy: MQObject); // EXPERIMENTAL
-        createDrawingObject() : MQObject; // EXPERIMENTAL
-        createDrawingMaterial() : MQMaterial; // EXPERIMENTAL
+        createDrawingObject(): MQObject; // EXPERIMENTAL
+        createDrawingMaterial(): MQMaterial; // EXPERIMENTAL
         getGlobalMatrix(obj: MQObject): number[]; // internal use.
         getObjectByName(name: string): MQObject | null; // .core.js
         addEventListener(event: string, lisntener: (e: any) => void); // .core.js
@@ -67,13 +68,7 @@ declare module "mqdocument" {
         remove(index: number): void;
         push(face: { points: VecXYZ[], material: number }): number;
     }
-    export interface MQVertex {
-        readonly id: number;
-        readonly refs: number;
-        x: number;
-        y: number;
-        z: number;
-    }
+    export type MQVertex = { readonly id: number, readonly refs: number } & Vec3;
     export interface MQFace {
         readonly id?: number;
         readonly index?: number;
@@ -104,9 +99,9 @@ declare module "mqdocument" {
         shaderType: int;
     }
     export interface MQScene {
-        cameraPosition: VecXYZ;
-        cameraLookAt: VecXYZ;
-        rotationCenter: VecXYZ;
+        cameraPosition: Vec3;
+        cameraLookAt: Vec3;
+        rotationCenter: Vec3;
         cameraAngle: MQangle;
         zoom: number; // camera zoom
         fov: number; // camera fov
@@ -123,8 +118,8 @@ declare module "mqdocument" {
         a?: number;
     }
     export interface MQTransform {
-        position: VecXYZ;
-        scale: VecXYZ;
+        position: Vec3;
+        scale: Vec3;
         rotation: MQangle;
         matrix: number[];
     }

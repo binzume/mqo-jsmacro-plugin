@@ -355,7 +355,7 @@ function csgToObject(dst, csg, mergeFaces, mergeVerts) {
 function toCSGPolygons(obj) {
 	return obj.faces.reduce((acc, f) => {
 		if (!f || f.points.length < 3) return acc;
-		let points = f.points.map((i) => { return new Vector3(obj.verts[i]) });
+		let points = f.points.map((i) => { return obj.verts[i] });
 		if (points.length == 3) {
 			let vs = points.reverse();
 			let p = new Polygon(vs, [f, obj]);

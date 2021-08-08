@@ -15,6 +15,19 @@
 //---------------------------------------------------------------------------------------------------------------------
 
 JSValue NewVec3(JSContext* ctx, const MQPoint& p) {
+  JSValue g = JS_GetGlobalObject(ctx);
+  JSValue vec = JS_GetPropertyStr(ctx, g, "_vector3class");
+  JS_FreeValue(ctx, g);
+  if (vec != JS_UNDEFINED) {
+    JSValue args[] = {JS_NewFloat64(ctx, p.x), JS_NewFloat64(ctx, p.y),
+                      JS_NewFloat64(ctx, p.z)};
+    JSValue v = JS_CallConstructor(ctx, vec, 3, args);
+    JS_FreeValue(ctx, args[0]);
+    JS_FreeValue(ctx, args[1]);
+    JS_FreeValue(ctx, args[2]);
+    JS_FreeValue(ctx, vec);
+    return v;
+  }
   ValueHolder v(ctx);
   v.Set("x", p.x);
   v.Set("y", p.y);
@@ -77,10 +90,7 @@ class VertexArray : public JSClassBase<VertexArray> {
 
   JSValue GetVertex(JSContext* ctx, int index) {
     MQPoint p = obj->GetVertex(index);
-    ValueHolder v(ctx);
-    v.Set("x", p.x);
-    v.Set("y", p.y);
-    v.Set("z", p.z);
+    ValueHolder v(ctx, NewVec3(ctx, p));
     v.Set("id", obj->GetVertexUniqueID(index));
     v.Set("refs", obj->GetVertexRefCount(index));
     return unwrap(std::move(v));

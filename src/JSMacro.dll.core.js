@@ -348,6 +348,9 @@ Object.defineProperty(MQObject.prototype, 'globalMatrix', {
 	}
 });
 
+// internal use
+globalThis._vector3class = Vector3;
+
 // deprecated
 globalThis.document = mqdocument;
 globalThis.MQMatrix = Matrix4;

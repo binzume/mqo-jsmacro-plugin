@@ -1,6 +1,7 @@
 // @ts-check
 /// <reference path="mq_plugin.d.ts" />
 import { assert, test } from "./modules/tests.js"
+import { Vector3 } from "geom"
 
 test("Core", (t) => {
 	assert.equals("object", typeof mqdocument);
@@ -107,6 +108,7 @@ test("MQObject verts/faces", (t) => {
 	assert.equals(456.0, obj.verts[1].x);
 	// assert.equals(0, obj.verts[2].x, "0 if not a number");
 	assert.equals("number", typeof obj.verts[0].id);
+	assert.assert(obj.verts[0] instanceof Vector3);
 
 	obj.faces.append([0, 1, 2], 0);
 	obj.faces.append([0, 2, 1], 0);
