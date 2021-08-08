@@ -9,22 +9,22 @@ declare module "mqdocument" {
         materials: MaterialList;
         scene: MQScene;
         currentObjectIndex: number;
-        currentObjectIndex: number;
+        currentMaterialIndex: number;
         compact(): void;
-        triangulate(v: VecXYZ[]): numvber[];
-        clearSelect(flags: number = 0): void;
+        triangulate(v: VecXYZ[]): number[];
+        clearSelect(flags?: number): void;
         isVertexSelected(obj: number, index: number): boolean;
         setVertexSelected(obj: number, index: number, select: boolean): void;
         isFaceSelected(obj: number, index: number): boolean;
         setFaceSelected(obj: number, index: number, select: boolean): void;
         getPluginData(key: string): string; // EXPERIMENTAL
         setPluginData(key: string, value: string): void; // EXPERIMENTAL
-        setDrawProxyObject(obj: MQObject, proxy: MQObject); // EXPERIMENTAL
+        setDrawProxyObject(obj: MQObject, proxy: MQObject): void; // EXPERIMENTAL
         createDrawingObject(): MQObject; // EXPERIMENTAL
         createDrawingMaterial(): MQMaterial; // EXPERIMENTAL
         getGlobalMatrix(obj: MQObject): number[]; // internal use.
         getObjectByName(name: string): MQObject | null; // .core.js
-        addEventListener(event: string, lisntener: (e: any) => void); // .core.js
+        addEventListener(event: string, lisntener: (e: any) => void): void; // .core.js
     }
     export class MQObject {
         constructor(name?: string);
@@ -35,7 +35,7 @@ declare module "mqdocument" {
         depth: number;
         compact(): void;
         clear(): void;
-        freeze(flags: number = 0): void;
+        freeze(flags?: number): void;
         merge(src: MQObject): void;
         clone(): MQObject;
         optimizeVertex(distance: number): void;
@@ -59,20 +59,20 @@ declare module "mqdocument" {
         remove(objOrIndex: MQMaterial | number): void;
     }
     export interface VertexList extends Array<MQVertex> {
-        append(v: VecXYZ | number[] | number, y?: numver, z?: number): number;
+        append(v: VecXYZ | number[] | number, y?: number, z?: number): number;
         remove(index: number): void;
         push(v: VecXYZ): number;
     }
     export interface FaceList extends Array<MQFace> {
         append(points: number[], material: number): number;
         remove(index: number): void;
-        push(face: { points: VecXYZ[], material: number }): number;
+        push(face: MQFace | { points: VecXYZ[], material?: number }): number;
     }
     export type MQVertex = { readonly id: number, readonly refs: number } & Vec3;
     export interface MQFace {
         readonly id?: number;
         readonly index?: number;
-        readonly points?: nunber[];
+        readonly points?: number[];
         readonly uv?: { u: number, v: number }[];
         material: number;
         visible?: boolean;
@@ -94,9 +94,9 @@ declare module "mqdocument" {
         specular: number;
         reflection: number;
         refraction: number;
-        doubleSided: bool;
-        selected: bool;
-        shaderType: int;
+        doubleSided: boolean;
+        selected: boolean;
+        shaderType: number;
     }
     export interface MQScene {
         cameraPosition: Vec3;
@@ -140,7 +140,7 @@ declare module "mqwidget" {
     export function modalDialog(content: FormSpec, buttons: string[]): number;
     export function fileDialog(): import("fs").File;
     export function folderDialog(): any;
-    export function alertDialog(message: string, title: string = ""): void;
+    export function alertDialog(message: string, title?: string): void;
 }
 
 declare module "child_process" {
@@ -174,7 +174,7 @@ declare module "geom" {
         x: number;
         y: number;
         z: number;
-        constructor(x: number | VecXYZ | number[] = 0, y: number = 0, z: number = 0);
+        constructor(x?: number | VecXYZ | number[], y?: number, z?: number);
         puls(v: VecXYZ): Vector3;
         minus(v: VecXYZ): Vector3;
         mul(v: number): Vector3;
@@ -194,7 +194,7 @@ declare module "geom" {
         y: number;
         z: number;
         w: number;
-        constructor(x: number = 0, y: number = 0, z: number = 0, w: number = 1);
+        constructor(x?: number, y?: number, z?: number, w?: number);
         dot(v: VecXYZW): number;
         applyTo(v: VecXYZ): Vector3;
         multiply(q: Quaternion): Quaternion;
@@ -203,11 +203,11 @@ declare module "geom" {
         toString(): string;
         static fromAxisAngle(v: VecXYZ, rad: number): Quaternion;
         static fromAngle(x: number, y: number, z: number): Quaternion;
-        static fromVectors(v: Vector3, v: Vector3): Quaternion;
+        static fromVectors(from: Vector3, to: Vector3): Quaternion;
     }
     export class Matrix4 {
         constructor(mat: number[]);
-        m: number[16];
+        m: number[];
         applyTo(v: VecXYZ): Vector3;
         mul(m: Matrix4): Matrix4;
         static multiply(m1: Matrix4, m2: Matrix4, result: Matrix4): Matrix4;
