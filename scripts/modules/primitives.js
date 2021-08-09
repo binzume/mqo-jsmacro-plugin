@@ -142,6 +142,54 @@ export class PrimitiveModeler {
         ].forEach(f => this.addFace(f.map(p => p + ofs)));
     }
     /**
+     * @param {{radius?:number}} spec
+     */
+    dodecahedron(spec = {}) {
+        let r = spec.radius ?? 1;
+        let ofs = this.vertices.length;
+        let b = (1 + Math.sqrt(5)) / 2, a = 1 / b;
+        [
+            [-1, -1, -1], [-1, -1, 1], [-1, 1, -1], [-1, 1, 1],
+            [1, -1, -1], [1, -1, 1], [1, 1, -1], [1, 1, 1],
+            [0, -a, -b], [0, -a, b], [0, a, -b], [0, a, b],
+            [-a, -b, 0], [-a, b, 0], [a, -b, 0], [a, b, 0],
+            [-b, 0, -a], [b, 0, -a], [-b, 0, a], [b, 0, a],
+        ].forEach(v => this.addVertex(v[0] * r, v[1] * r, v[2] * r));
+        [
+            [13, 15, 7, 11, 3],
+            [15, 6, 17, 19, 7],
+            [6, 10, 8, 4, 17],
+            [10, 2, 16, 0, 8],
+            [16, 18, 1, 12, 0],
+            [15, 13, 2, 10, 6],
+            [13, 3, 18, 16, 2],
+            [3, 11, 9, 1, 18],
+            [8, 0, 12, 14, 4],
+            [7, 19, 5, 9, 11],
+            [17, 4, 14, 5, 19],
+            [9, 5, 14, 12, 1]
+        ].forEach(f => this.addFace(f.map(p => p + ofs)));
+    }
+    /**
+     * @param {{radius?:number}} spec
+     */
+    icosahedron(spec = {}) {
+        let r = spec.radius ?? 1;
+        let ofs = this.vertices.length;
+        let x = (Math.sqrt(5) + 1) / 2;
+        [
+            [-1, x, 0], [1, x, 0], [-1, -x, 0], [1, -x, 0],
+            [0, -1, x], [0, 1, x], [0, -1, -x], [0, 1, -x],
+            [x, 0, -1], [x, 0, 1], [-x, 0, -1], [-x, 0, 1],
+        ].forEach(v => this.addVertex(v[0] * r, v[1] * r, v[2] * r));
+        [
+            [0, 1, 5], [0, 7, 1], [0, 10, 7], [0, 11, 10], [0, 5, 11],
+            [1, 9, 5], [5, 4, 11], [11, 2, 10], [10, 6, 7], [7, 8, 1],
+            [3, 4, 9], [3, 2, 4], [3, 6, 2], [3, 8, 6], [3, 9, 8],
+            [4, 5, 9], [2, 11, 4], [6, 10, 2], [8, 7, 6], [9, 1, 8]
+        ].forEach(f => this.addFace(f.map(p => p + ofs)));
+    }
+    /**
      * @param {{width?:number, height?:number}} spec 
      */
     plane(spec = {}) {
