@@ -502,11 +502,10 @@ static int DialogModuleInit(JSContext* ctx, JSModuleDef* m) {
 }
 
 void CloseAllWindow(JSContext* ctx) {
-  for (auto f : forms) {
-    f->SetVisible(false);
-    f->Clear();
+  std::vector forms_copy(forms.begin(), forms.end());
+  for (auto f : forms_copy) {
+    f->Close();
   }
-  forms.clear();
 }
 
 JSModuleDef* InitMQWidgetModule(JSContext* ctx) {
