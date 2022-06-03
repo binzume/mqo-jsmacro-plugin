@@ -130,15 +130,17 @@ class BSPNodeT {
   // faster...
   bool raycast(const RayT<TElement> &ray, Vector3T<TElement> &intersection,
                TElement eps = 0, TElement min = 0,
-               TElement max = std::numeric_limits<TElement>::max()) {
+               TElement max = std::numeric_limits<TElement>::has_infinity
+                                  ? std::numeric_limits<TElement>::infinity()
+                                  : std::numeric_limits<TElement>::max()) {
     bool backside =
         plane.signedDistanceTo(ray.origin + ray.direction * min) < 0;
-    auto near = backside ? back : front;
     if (backside && back == nullptr) {
       intersection = ray.origin + ray.direction * min;
       return true;
     }
     auto t = ray.distanceTo(plane);
+    auto near = backside ? back : front;
     if (t < min || t > max) {
       if (near) {
         return near->raycast(ray, intersection, eps, min, max);
@@ -147,11 +149,11 @@ class BSPNodeT {
       if (near && near->raycast(ray, intersection, eps, min, t - eps)) {
         return true;
       }
-      auto far = backside ? front : back;
       if (!backside && back == nullptr) {
         intersection = ray.origin + ray.direction * t;
         return true;
       }
+      auto far = backside ? front : back;
       if (far) {
         return far->raycast(ray, intersection, eps, t + eps, max);
       }
