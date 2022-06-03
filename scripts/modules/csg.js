@@ -136,6 +136,11 @@ class CSGPrimitive {
 		g.sphere(spec, sh, sv);
 		return new CSGObject(g.polygons);
 	}
+	static torus(spec, sh, sv) {
+		let g = this.newGenerator();
+		g.torus(spec, sh, sv);
+		return new CSGObject(g.polygons);
+	}
 	static plane(spec) {
 		let g = this.newGenerator();
 		g.plane(spec);

@@ -78,7 +78,7 @@ export class PrimitiveModeler {
         }
     }
     /**
-     * @param {{radius?:number, height?:number}} spec 
+     * @param {{radius?:number, height?:number, open?:boolean}} spec 
      */
     cylinder(spec = {}, s = 20) {
         let r = spec.radius ?? 1;
@@ -95,8 +95,10 @@ export class PrimitiveModeler {
             top.push(st + i * 2);
             bottom.push(st + i * 2 + 1);
         }
-        this.addFace(top);
-        this.addFace(bottom.reverse());
+        if (!spec.open) {
+            this.addFace(top);
+            this.addFace(bottom.reverse());
+        }
     }
     /**
      * @param {{radius?:number}} spec
@@ -202,5 +204,43 @@ export class PrimitiveModeler {
             [-w / 2, 0, h / 2],
         ].forEach(v => this.addVertex(v[0], v[1], v[2]));
         this.addFace([st, st + 1, st + 2, st + 3]);
+    }
+
+    torus(spec = {}, s1 = 20, s2 = 20) {
+        // TODO: axis
+        let r1 = spec.radius1 ?? 4;
+        let r2 = spec.radius2 ?? 1;
+        let polygon = [];
+        for (let i = 0; i < s2; i++) {
+            let t = i / s2 * 2 * Math.PI;
+            polygon.push([Math.cos(t) * r2 + r1, Math.sin(t) * r2, 0]);
+        }
+        this.lathe({ polygon, center: spec.center }, s1);
+    }
+
+    /**
+     * @param {{polygon: number[][], center?:number[]}} spec 
+     */
+    lathe(spec, s = 20) {
+        // TODO: axis
+        let polygon = spec.polygon ?? [];
+        let c = spec.center ?? [0, 0, 0];
+        let l = polygon.length, st = this.vertices.length;
+        for (let i = 0; i < s; i++) {
+            let t = i / s * 2 * Math.PI;
+            for (let p of polygon) {
+                this.addVertex(
+                    c[0] + p[0] * Math.cos(t) - p[2] * Math.sin(t),
+                    c[1] + p[1],
+                    c[2] + p[2] * Math.cos(t) + p[0] * Math.sin(t)
+                );
+            }
+        }
+        for (let i = 0; i < s; i++) {
+            let st1 = st + i * l, st2 = st + (i + 1) % s * l;
+            for (let j = 0; j < l; j++) {
+                this.addFace([st1 + (j + 1) % l, st1 + j, st2 + j, st2 + (j + 1) % l]);
+            }
+        }
     }
 }
