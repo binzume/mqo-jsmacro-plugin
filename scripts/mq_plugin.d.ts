@@ -52,7 +52,7 @@ declare module "mqdocument" {
     }
     export interface ObjectList extends Array<MQObject> {
         append(obj: MQObject): number;
-        remove(objOrIndex: MQObject | number): void;
+        remove(objOrIndex: MQObject | number, destroy?: boolean): void;
         insert(obj: MQObject, before: MQObject): number;
     }
     export interface MaterialList extends Array<MQMaterial> {

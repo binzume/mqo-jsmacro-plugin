@@ -781,7 +781,7 @@ class MQDocumentWrapper {
     ret.Define("remove",
       JS_NewCFunctionData(
         ctx, method_wrapper_bind<&MQDocumentWrapper::RemoveObject>,
-        1, 0, 1, data));
+        2, 0, 1, data));
     ret.Define("insert",
       JS_NewCFunctionData(
         ctx, method_wrapper_bind<&MQDocumentWrapper::InsertObject>, 2,
@@ -802,10 +802,10 @@ class MQDocumentWrapper {
   }
 
   JSValue RemoveObject(JSContext* ctx, JSValueConst this_val, int argc,
-    JSValueConst* argv, JSValue obj) {
+    JSValueConst* argv, JSValue obj, bool destroy) {
     if (JS_IsNumber(obj)) {
       doc->DeleteObject(convert_jsvalue<int>(ctx, obj));
-      return JS_UNDEFINED;
+      return JS_TRUE;
     }
     MQObjectWrapper* o = MQObjectWrapper::Unwrap(ctx, obj);
     if (o == nullptr) {
@@ -813,9 +813,21 @@ class MQDocumentWrapper {
     }
     ValueHolder objectCache = GetObjcetCache(ctx, this_val);
     objectCache.Delete(o->GetId());
-    doc->DeleteObject(o->index);
-    o->Reset();
-    return JS_UNDEFINED;
+    if (destroy) {
+      if (o->index < 0) {
+        return JS_FALSE;
+      }
+      doc->DeleteObject(o->index);
+      o->Reset();
+    } else {
+      if (doc->RemoveObject(o->obj)) {
+        o->doc = nullptr;
+        o->index = -1;
+      } else {
+        return JS_FALSE;
+      }
+    }
+    return JS_TRUE;
   }
 
   JSValue InsertObject(JSContext* ctx, JSValueConst this_val, int argc,

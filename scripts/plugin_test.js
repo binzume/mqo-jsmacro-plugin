@@ -67,9 +67,20 @@ test("MQObject", (t) => {
 		assert.equals(idx, obj.index);
 		assert.equals(obj, mqdocument.objects[idx], "get object");
 		assert.equals(idx, mqdocument.objects.append(obj), "appendx2 (?)");
+
 		mqdocument.objects.remove(obj);
-		assert.equals(0, obj.id, "id is not set.");
-		assert.equals(undefined, mqdocument.objects[idx], "remove");
+		assert.equals(undefined, mqdocument.objects[idx], "removed");
+		assert.equals(-1, obj.index, "index should be cleared.");
+		assert.equals("test", obj.name, "object should not be destroyed");
+
+		mqdocument.objects.append(obj);
+		assert.assert(obj.index >= 0, "add agein");
+
+		mqdocument.objects.remove(obj, true);
+		assert.equals(undefined, mqdocument.objects[idx], "removed");
+		assert.equals("", obj.name, "object should be destroyed");
+		assert.equals(-1, obj.index, "index should be cleared.");
+		assert.equals(0, obj.id, "id should be cleared.");
 	}
 	{
 		let idx = mqdocument.objects.append(new MQObject("test"));
