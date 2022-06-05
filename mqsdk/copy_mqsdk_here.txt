@@ -2,3 +2,8 @@
 https://www.metaseq.net/jp/download/sdk/
 
 unzip and copy mqsdk directory.
+
+
+Download SDK with Premake comamnd:
+
+premake5 downloadmqsdk

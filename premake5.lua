@@ -85,3 +85,17 @@ project "quickjs"
 		"quickjspp/quickjs-opcode.h",
 		"quickjspp/quickjs-jsx.h",
 	}
+
+newaction {
+	trigger     = "downloadmqsdk",
+	description = "Download mqsdk",
+	execute = function ()
+		local sdkver = "mqsdk483b"
+		local result_str, response_code = http.download("https://www.metaseq.net/metaseq/" .. sdkver .. ".zip", "mqsdk/" .. sdkver .. ".zip")
+		if (response_code ~= 200) then
+			error("Failed to download Metasequoia SDK")
+		end
+		zip.extract("mqsdk/" .. sdkver .. ".zip", "mqsdk")
+		os.execute("{COPY} mqsdk/mqsdk483b/mqsdk/* mqsdk/")
+	end
+}
