@@ -56,9 +56,7 @@ class Polygon {
           if (ti != TPlane::BACK) f.push_back(vi);
           if (ti != TPlane::FRONT) b.push_back(vi);
           if ((ti | tj) == (TPlane::FRONT | TPlane::BACK)) {
-            T t =
-                (splane.w - splane.normal.dot(vi)) / splane.normal.dot(vj - vi);
-            auto v = vi.lerp(vj, t);
+            auto v = splane.intersection(vi, vj);
             f.push_back(v);
             b.push_back(v);
           }

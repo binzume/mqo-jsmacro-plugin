@@ -164,6 +164,10 @@ struct PlaneT {
   std::string to_string() const {
     return std::format("[{},{}]", normal.to_string(), w);
   }
+  Vector3T<T> intersection(const Vector3T<T>& p1, const Vector3T<T>& p2) const {
+    T t = (w - normal.dot(p1)) / normal.dot(p2 - p1);
+    return p1.lerp(p2, t);
+  }
   bool isValid() const { return normal.lengthSqr() > 0; }
 };
 
