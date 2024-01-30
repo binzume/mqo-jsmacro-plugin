@@ -72,6 +72,18 @@ JSPolygon ToPolygon(ValueHolder&& v) {
   return JSPolygon(vertices, o, ToPlane(v["plane"]));
 }
 
+JSPolygon ToPolygon(ValueHolder&& v, unordered_map<geom::Vector3, JSValue>& vcache) {
+  auto vv = v["vertices"];
+  uint32_t sz = vv.Length();
+  vector<geom::Vector3> vertices(sz);
+  for (uint32_t i = 0; i < sz; i++) {
+    vertices[i] = ToVector3(vv[i]);
+    vcache[vertices[i]] = vv[i].GetValueNoDup();
+  }
+  JSValue o = v.GetValueNoDup();  // JS_DupValue in ToJSValue
+  return JSPolygon(vertices, o, ToPlane(v["plane"]));
+}
+
 void ToPolygons(ValueHolder&& v, vector<JSPolygon>& polygons) {
   uint32_t sz = v.Length();
   for (uint32_t i = 0; i < sz; i++) {
@@ -143,7 +155,7 @@ class JSBSPTree : public JSClassBase<JSBSPTree> {
     for (uint32_t i = 0; i < sz; i++) {
       vector<JSPolygon> inner;
       vector<JSPolygon> outer;
-      vector<JSPolygon> polygons{ToPolygon(pp[i])};
+      vector<JSPolygon> polygons{ToPolygon(pp[i], vcache)};
       node.splitPolygons(polygons, inner, outer, eps);
       if ((returnInner ? outer : inner).size() == 0) {
         ret.Set(ret.Length(), pp[i]);
