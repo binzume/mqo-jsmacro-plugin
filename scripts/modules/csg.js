@@ -314,18 +314,49 @@ function mergePolygons(polygons) {
 	return mpolygons;
 }
 
+function searchOrInsertVert(sorted, p, v, makeEnt, threshold) {
+	let m = 0;
+	let n = sorted.length - 1;
+	while (m <= n) {
+		let k = (n + m) >> 1;
+		let cmp = v - sorted[k][0];
+		if (cmp > threshold*3) {
+			m = k + 1;
+		} else if(cmp < -threshold*3) {
+			n = k - 1;
+		} else {
+			for (let t = 0; k + t <= n && Math.abs(sorted[k + t][0] - v) < threshold * 3; t++) {
+				if (sorted[k + t][1].distanceToSqr(p) < threshold) {
+					return k + t;
+				}
+			}
+			for (let t = 1; k - t >= m && Math.abs(sorted[k - t][0] - v) < threshold * 3; t++) {
+				if (sorted[k - t][1].distanceToSqr(p) < threshold) {
+					return k - t;
+				}
+			}
+			break;
+		}
+	}
+	let k = sorted.length - 1;
+	for (;k >= 0 && sorted[k][0] > v; k--) {
+		sorted[k + 1] =  sorted[k];
+	}
+	sorted[k + 1] = makeEnt();
+	return k + 1;
+}
+
+/**
+ * @param {Vector3} pos 
+ * @param {MQObject} obj 
+ * @param {[number, Vector3, number][]} verts 
+ * @returns 
+ */
 function getVertIndex(pos, obj, verts) {
 	const threshold = CSGObject.EPSILON * CSGObject.EPSILON * 100;
-	// !!! O(verts.length)
-	let v = verts.find(function (e) {
-		return e[0].distanceToSqr(pos) < threshold;
-	});
-	if (v !== undefined) {
-		return v[1];
-	}
-	let i = obj.verts.append(pos);
-	verts.push([pos, i]);
-	return i;
+	let v = pos.x + pos.y + pos.z;
+	let n = searchOrInsertVert(verts, pos, v, () => [v, pos, obj.verts.append(pos)], threshold);
+	return verts[n][2];
 }
 
 /**
