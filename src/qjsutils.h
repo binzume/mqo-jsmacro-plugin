@@ -6,8 +6,8 @@
 
 #include "quickjs.h"
 
-template <typename T>
-static inline T convert_jsvalue(JSContext* ctx, JSValue v);
+template <typename R, typename T = void>
+static inline R convert_jsvalue(JSContext* ctx, JSValue v);
 template <>
 static inline JSValue convert_jsvalue(JSContext* ctx, JSValue v) {
   return v;
