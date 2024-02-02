@@ -10,7 +10,6 @@ workspace "mqo-plugin"
 	defines {
   	  "JS_STRICT_NAN_BOXING", -- this option enables x64 build on Windows/MSVC
       "CONFIG_BIGNUM",
-      "CONFIG_JSX",           -- native JSX support - enables JSX literals
     } 
 
 	filter "platforms:x86"
@@ -71,19 +70,16 @@ project "quickjs"
 		"quickjspp/cutils.c",
 		"quickjspp/libregexp.c",
 		"quickjspp/libunicode.c",
-		"quickjspp/quickjs.c",
-		"quickjspp/quickjs-libc.c",
 		"quickjspp/libbf.c",
 		"quickjspp/libregexp.h",
 		"quickjspp/libregexp-opcode.h",
 		"quickjspp/libunicode.h",
 		"quickjspp/libunicode-table.h",
 		"quickjspp/list.h",
+		"quickjspp/quickjs.c",
 		"quickjspp/quickjs.h",
 		"quickjspp/quickjs-atom.h",
-		"quickjspp/quickjs-libc.h",
 		"quickjspp/quickjs-opcode.h",
-		"quickjspp/quickjs-jsx.h",
 	}
 
 newaction {
