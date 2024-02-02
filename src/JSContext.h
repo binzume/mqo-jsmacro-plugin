@@ -27,6 +27,11 @@ class JsContext {
     if (JS_IsException(val)) {
       dump_exception(ctx, val);
     }
+    if (JS_PromiseState(ctx, val) == JS_PROMISE_FULFILLED) {
+      auto promise = val;
+      val = JS_PromiseResult(ctx, promise);
+      JS_FreeValue(ctx, promise);
+    }
     return ValueHolder(ctx, val);
   }
 

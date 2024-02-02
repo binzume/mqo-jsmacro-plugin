@@ -190,5 +190,5 @@ MIT License
 
 また，以下のライブラリに依存しています．
 
-- https://github.com/c-smile/quickjspp
+- https://github.com/binzume/quickjs-msvc
 - https://bellard.org/quickjs/

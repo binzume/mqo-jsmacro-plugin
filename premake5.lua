@@ -45,7 +45,7 @@ project "jsmacro-plugin"
 	language "C++"
 	kind "SharedLib"
 	links { "mqsdk", "quickjs" }
-	includedirs { "mqsdk", "quickjspp" }
+	includedirs { "mqsdk", "quickjs-msvc" }
 	files {
 		"src/*.cpp",
 		"src/*.h",
@@ -66,20 +66,22 @@ project "quickjs"
 	exceptionhandling "Off"
 	rtti "Off"
 	files {
-		"quickjspp/cutils.h",
-		"quickjspp/cutils.c",
-		"quickjspp/libregexp.c",
-		"quickjspp/libunicode.c",
-		"quickjspp/libbf.c",
-		"quickjspp/libregexp.h",
-		"quickjspp/libregexp-opcode.h",
-		"quickjspp/libunicode.h",
-		"quickjspp/libunicode-table.h",
-		"quickjspp/list.h",
-		"quickjspp/quickjs.c",
-		"quickjspp/quickjs.h",
-		"quickjspp/quickjs-atom.h",
-		"quickjspp/quickjs-opcode.h",
+		"quickjs-msvc/cutils.h",
+		"quickjs-msvc/cutils.c",
+		"quickjs-msvc/libregexp.c",
+		"quickjs-msvc/libunicode.c",
+		"quickjs-msvc/libbf.c",
+		"quickjs-msvc/libregexp.h",
+		"quickjs-msvc/libregexp-opcode.h",
+		"quickjs-msvc/libunicode.h",
+		"quickjs-msvc/libunicode-table.h",
+		"quickjs-msvc/list.h",
+		"quickjs-msvc/quickjs.c",
+		"quickjs-msvc/quickjs.h",
+		"quickjs-msvc/quickjs-atom.h",
+		"quickjs-msvc/quickjs-opcode.h",
+		"quickjs-msvc/quickjs-libc.c",
+		"quickjs-msvc/quickjs-libc.h",
 	}
 
 newaction {
