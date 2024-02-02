@@ -132,7 +132,7 @@ class JSMacroPlugin : public MQStationPlugin {
   static VOID CALLBACK TickTimerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent,
                                      DWORD dwTime);
   JsContext *GetJsContext(MQDocument doc, const std::vector<std::string> &argv =
-                                              std::vector<std::string>());
+                                              std::vector<std::string>({""}));
   std::string GetScriptDir() const;
 
   void ShowWindow(int visible) {
@@ -696,7 +696,7 @@ void JSMacroPlugin::ExecScript(MQDocument doc, const std::string &fname) {
   if (fname.starts_with("js:")) {
     std::string code = fname.substr(3);
     debug_log("> " + code);
-    auto ret = GetJsContext(doc)->ExecScript(code);
+    auto ret = GetJsContext(doc)->ExecScript(code, "console", false);
     if (!ret.IsUndefined()) {
       debug_log(ret.To<std::string>());
     }
